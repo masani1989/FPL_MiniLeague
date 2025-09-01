@@ -8,7 +8,7 @@ global deadline, later_gw, completed_months
 
 deadline = gwk.get_upcoming_deadline()
 latest_gw = gwk.get_recent_completed_gameweek()
-completed_months = gwk.get_till_latest_phase().keys() if gwk.get_till_latest_phase() else ['0']
+completed_months = list(gwk.get_till_latest_phase().keys()) if gwk.get_till_latest_phase() else ['0']
 
 st.session_state['gw_id'] = latest_gw[0]
 st.session_state['gw_status'] = latest_gw[1]

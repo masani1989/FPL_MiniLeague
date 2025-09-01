@@ -92,10 +92,14 @@ def get_till_latest_phase():
     phase = get_phases()
     gw = get_recent_completed_gameweek()
 
+    months = {}
+
     try:
         for (k, v) in phase.items():
             if gw[0] > v[1] or (gw[0] == v[1] and gw[1]):
-                return k, v
+                months[k] = v
+        if months:
+            return months
 
     except Exception as e:
         logging.error(e)
@@ -108,11 +112,12 @@ def get_ongoing_month():
     """
     gw = get_recent_completed_gameweek()
     mn = get_till_latest_phase()
-
-    if mn is not None and ((gw[0] == mn[1][1] and not gw[1]) or gw[0] < mn[1][1]):
-        return mn[0]
-    else:
-        return datetime.utcnow().strftime('%B')
+    
+    for k, v in mn.items():
+        if ((gw[0] == mn[1][1] and not gw[1]) or gw[0] < mn[1][1]):
+            return mn[0]
+        else:
+            return datetime.utcnow().strftime('%B')
 
 
 def get_gw_data(player, gw) -> dict:
