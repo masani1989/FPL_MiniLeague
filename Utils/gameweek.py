@@ -114,8 +114,8 @@ def get_ongoing_month():
     mn = get_till_latest_phase()
     
     for k, v in mn.items():
-        if ((gw[0] == mn[1][1] and not gw[1]) or gw[0] < mn[1][1]):
-            return mn[0]
+        if ((gw[0] == v[1] and not gw[1]) or gw[0] < v[1]):
+            return k
         else:
             return datetime.utcnow().strftime('%B')
 
