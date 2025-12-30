@@ -1,6 +1,12 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import Utils.gsheet_conn as gs
 from Utils.league import *
 import Utils.gameweek as gwk
+import pandas as pd
+import argparse
 
 
 lg = league(282978)
@@ -16,7 +22,7 @@ def append_rows(sheet_name, wksheet_name, val):
     """
     client = gs.authenticate_google_sheets()
     sheet = client.open(sheet_name).worksheet(wksheet_name)
-    sheet.append_rows(val)
+    sheet.append_rows(val, insert_data_option='INSERT_ROWS')
 
 
 def delete_rows_based_on_column(sheet_name, wksheet_name, column_index, value_to_delete):
@@ -45,13 +51,13 @@ def delete_rows_based_on_column(sheet_name, wksheet_name, column_index, value_to
         sheet.delete_rows(row_index)
 
 
-def refGw():
+def refGw(gw=None):
     """
     Function to refresh the latest ongoing/completed gameweek's data
     :return:
     """
     plList = lg.get_league_players()
-    currGw = gwk.get_recent_completed_gameweek()
+    currGw = gwk.get_recent_completed_gameweek() # [gw, True]
 
     delete_rows_based_on_column('FPL_Fantasy_Kings', 'Gameweek', 7, f'{currGw[0]}')
     gw_plr_list = []
@@ -101,4 +107,13 @@ def refOverall():
 
 
 if __name__ == '__main__':
-    refGw()
+
+    parser = argparse.ArgumentParser(description='Refresh FPL Data')
+    parser.add_argument('--gw', type=int, help='Gameweek number to refresh data for', required=False)
+    args = parser.parse_args()
+    if args.gw:
+        refGw(args.gw)
+        # refMnth(args.gw)
+        # refOverall()
+    else:
+        refMnth(17)
