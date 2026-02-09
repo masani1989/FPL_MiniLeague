@@ -7,7 +7,7 @@ plotly-express==0.4.1
 pyarrow==17.0.0
 requests==2.31.0
 requests-oauthlib==2.0.0
-st-gsheets-connection @ git+https://github.com/masani1989/gsheets-connection.git@59fd12f97a041d5a384f6c0ab076a456658cd8c8
+st-gsheets-connection
 streamlit==1.37.1
 toml==0.10.2
 oauth2client==4.1.3
