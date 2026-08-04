@@ -1,13 +1,28 @@
-import os
 import pytest
 
 import Utils.config as cfg
 
 
-def test_default_config_values():
+_CONFIG_KEYS = ("SEASON_ID", "FPL_LEAGUE_ID", "LEAGUE_NAME", "LEAGUE_RECORD_ID")
+
+
+@pytest.fixture(autouse=True)
+def _save_and_restore_config():
+    """Snapshot config values before each test and restore them afterwards.
+
+    This prevents `test_env_overrides` from mutating module-level state that
+    later tests rely on.
+    """
+    snapshot = {key: getattr(cfg, key) for key in _CONFIG_KEYS}
+    yield
+    for key, value in snapshot.items():
+        setattr(cfg, key, value)
+
+
+def test_default_config_values(monkeypatch):
     # Ensure a clean env for this test
     for key in ("FPL_SEASON_ID", "FPL_LEAGUE_ID", "FPL_LEAGUE_NAME"):
-        os.environ.pop(key, None)
+        monkeypatch.delenv(key, raising=False)
     # Re-import to pick up defaults (monkeypatch import in real run)
     from importlib import reload
     reloaded = reload(cfg)

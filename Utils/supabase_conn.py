@@ -174,7 +174,7 @@ def load_gameweek_for_refresh(season_id: str = config.SEASON_ID) -> pd.DataFrame
         return pd.DataFrame(columns=["PlayerId", "Player", "Points", "Gameweek"])
 
     merged = df.merge(
-        managers_df[["id", "fpl_entry_id", "player_name"]],
+        managers_df[["id", "fpl_entry_id"]],
         left_on="manager_id",
         right_on="id",
     )
