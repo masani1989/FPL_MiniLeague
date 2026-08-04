@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import Utils.refreshData as rd
 import streamlit as st
 from Utils.league import *
-import Utils.gsheet_conn as gs
+import Utils.supabase_conn as db
 # from fpl_streamlit_app import deadline, latest_gw
 
 st.markdown(f'<h1 style="color:#33ff33;font-size:60px;background-image:linear-gradient(45deg, #1A512E, #63A91F);font-family:Montserrat;text-align:left;padding:20px;border-radius:10px;"'
@@ -38,7 +38,7 @@ st.markdown("""
 
 st.divider()
 
-dataDate = gs.data_load(wksheet='DataDate', cols=['DataAsOf'])
+dataDate = db.load_data_date()
 gw_state = str(st.session_state['gw_id']) + ' ' + {st.session_state['gw_status'] == False: 'In-Progress', st.session_state['gw_status'] == True: 'Complete'}.get(True)
 
 # Custom visual block for Gameweek info
@@ -63,9 +63,8 @@ is_clicked = st.button('Refresh Data')
 if is_clicked:
     with st.spinner('In-Progress......'):
         st.cache_data.clear()
-        now = pd.DataFrame({'DataAsOf': [(datetime.utcnow() + timedelta(minutes=330)).strftime("%Y-%m-%d %H:%M:%S")]})
         rd.refGw()
-        gs.update_data(wksheet='DataDate', df=now)
+        db.log_data_refresh(status="success", notes="Manual refresh via UI")
 
 st.divider()
 

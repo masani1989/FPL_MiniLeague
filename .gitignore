@@ -1,6 +1,8 @@
 .idea
 .streamlit/secrets.toml
 venv
-__pycache__
+__pycache__/
+*.pyc
 .devcontainer/*
+.superpowers/
 docs/*

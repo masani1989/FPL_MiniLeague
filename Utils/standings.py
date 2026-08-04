@@ -1,24 +1,17 @@
 import streamlit as st
-import Utils.gsheet_conn as gs
 import pandas as pd
-# from fpl_streamlit_app import latest_gw, completed_months
+import Utils.supabase_conn as db
 
-# Function to refresh data from the googlesheets containing the GW, Monthly and Overall standings and points
+
 @st.cache_data()
 def data_refresh():
     """
-    Function to refresh data from the googlesheets containing the GW, Monthly and Overall standings and points
-    :return:
+    Function to refresh data from Supabase containing the GW, Monthly and Overall standings and points.
+    :return: tuple of (ovr_data, gw_data, mn_data)
     """
-
-    # Read data from various sheets into the globally defined variables. This data is for overall, GW and monthly
-    ovr_data = gs.data_load('Overall', ['Rank', 'Player', 'Points', 'Last_Rank']) \
-        .astype({'Rank': 'int64', 'Last_Rank': 'int64', 'Points': 'int64'})
-    gw_data = gs.data_load('Gameweek', ['Player', 'Gross', 'Transfer', 'Points', 'Rank', 'Gameweek']) \
-        .astype({'Rank': 'int64', 'Points': 'int64', 'Gross': 'int64', 'Transfer': 'int64'})
-    mn_data = gs.data_load('Monthly', ['Player', 'Points', 'Rank', 'Month']) \
-        .astype({'Rank': 'int64', 'Points': 'int64'})
-    
+    ovr_data = db.load_overall()
+    gw_data = db.load_gameweek()
+    mn_data = db.load_monthly()
     return ovr_data, gw_data, mn_data
 
 @st.cache_data()
