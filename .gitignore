@@ -1,2 +1,5 @@
 .idea
 .streamlit/secrets.toml
+__pycache__/
+*.pyc
+.superpowers/
