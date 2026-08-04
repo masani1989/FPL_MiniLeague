@@ -1,6 +1,5 @@
 import pandas as pd
 import streamlit as st
-import Utils.gsheet_conn as gs
 import Utils.gameweek as gwk
 from Utils.league import *
 # from fpl_streamlit_app import deadline, latest_gw, completed_months
