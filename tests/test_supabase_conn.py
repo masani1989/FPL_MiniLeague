@@ -233,3 +233,70 @@ def test_load_data_date_returns_formatted_string(monkeypatch):
     df = supabase_conn.load_data_date()
     assert list(df.columns) == ["DataAsOf"]
     assert df.loc[0, "DataAsOf"] == "08/15/2025 18:30:00"
+
+
+def test_upsert_gw_winnings_maps_ids_and_upserts(monkeypatch):
+    client = _make_mock_client()
+    monkeypatch.setattr(supabase_conn, "get_client", lambda: client)
+
+    df = pd.DataFrame({
+        "PlayerId": [777321],
+        "Player": ["A B"],
+        "Gameweek": [1],
+        "Rank": [1],
+        "Count": [1],
+        "Pot": [300],
+        "Winnings": [300.0],
+    })
+    supabase_conn.upsert_gw_winnings(df, {777321: 1}, {1: 101}, "2025-26")
+
+    assert len(client._upserts) == 1
+    records, on_conflict = client._upserts[0]
+    assert records[0]["manager_id"] == 1
+    assert records[0]["gameweek_id"] == 101
+    assert records[0]["winnings"] == 300.0
+    assert on_conflict == "manager_id,gameweek_id,season_id"
+
+
+def test_upsert_monthly_winnings_maps_ids_and_upserts(monkeypatch):
+    client = _make_mock_client()
+    monkeypatch.setattr(supabase_conn, "get_client", lambda: client)
+
+    df = pd.DataFrame({
+        "PlayerId": [777321],
+        "Player": ["A B"],
+        "Month": ["August"],
+        "Rank": [1],
+        "Count": [1],
+        "Pot": [530],
+        "Winnings": [530.0],
+    })
+    supabase_conn.upsert_monthly_winnings(df, {777321: 1}, "2025-26")
+
+    assert len(client._upserts) == 1
+    records, on_conflict = client._upserts[0]
+    assert records[0]["manager_id"] == 1
+    assert records[0]["month"] == "August"
+    assert records[0]["winnings"] == 530.0
+    assert on_conflict == "manager_id,month,season_id"
+
+
+def test_upsert_winnings_summary_maps_ids_and_upserts(monkeypatch):
+    client = _make_mock_client()
+    monkeypatch.setattr(supabase_conn, "get_client", lambda: client)
+
+    df = pd.DataFrame({
+        "PlayerId": [777321],
+        "Player": ["A B"],
+        "gw_winnings": [300.0],
+        "monthly_winnings": [530.0],
+        "overall_prize": [0],
+        "total_winnings": [830.0],
+    })
+    supabase_conn.upsert_winnings_summary(df, {777321: 1}, "2025-26")
+
+    assert len(client._upserts) == 1
+    records, on_conflict = client._upserts[0]
+    assert records[0]["manager_id"] == 1
+    assert records[0]["total_winnings"] == 830.0
+    assert on_conflict == "manager_id,season_id"

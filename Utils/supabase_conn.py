@@ -352,3 +352,262 @@ def log_data_refresh(
     }
     client = get_client()
     client.table("data_refresh_log").insert(record).execute()
+
+
+@st.cache_data(ttl=300)
+def load_gameweeks_df(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load raw gameweek reference rows for a season."""
+    return _fetch_table("gameweek", season_id)
+
+
+@st.cache_data(ttl=300)
+def load_monthly_for_refresh(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load monthly results with manager FPL id for the refresh pipeline."""
+    df = _fetch_table("monthly_results", season_id)
+    if df.empty:
+        return pd.DataFrame(columns=["PlayerId", "Player", "Month", "Rank", "Points"])
+
+    managers_df = _fetch_table("managers")
+    if managers_df.empty:
+        return pd.DataFrame(columns=["PlayerId", "Player", "Month", "Rank", "Points"])
+
+    merged = df.merge(
+        managers_df[["id", "fpl_entry_id"]],
+        left_on="manager_id",
+        right_on="id",
+    )
+    merged = merged[["fpl_entry_id", "player_name", "month", "rank", "points"]].rename(
+        columns={
+            "fpl_entry_id": "PlayerId",
+            "player_name": "Player",
+            "month": "Month",
+            "rank": "Rank",
+            "points": "Points",
+        }
+    )
+    return merged.astype({"PlayerId": "int64", "Rank": "int64", "Points": "int64"})
+
+
+@st.cache_data(ttl=300)
+def load_overall_for_refresh(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load overall standings with manager FPL id for the refresh pipeline."""
+    df = _fetch_table("overall_standings", season_id)
+    if df.empty:
+        return pd.DataFrame(columns=["PlayerId", "Player", "Rank", "Points", "Last_Rank"])
+
+    managers_df = _fetch_table("managers")
+    if managers_df.empty:
+        return pd.DataFrame(columns=["PlayerId", "Player", "Rank", "Points", "Last_Rank"])
+
+    merged = df.merge(
+        managers_df[["id", "fpl_entry_id"]],
+        left_on="manager_id",
+        right_on="id",
+    )
+    merged = merged[["fpl_entry_id", "player_name", "rank", "points", "last_rank"]].rename(
+        columns={
+            "fpl_entry_id": "PlayerId",
+            "player_name": "Player",
+            "rank": "Rank",
+            "points": "Points",
+            "last_rank": "Last_Rank",
+        }
+    )
+    return merged.astype({"PlayerId": "int64", "Rank": "int64", "Points": "int64", "Last_Rank": "int64"})
+
+
+@st.cache_data(ttl=300)
+def load_gw_winnings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load gameweek winnings in the shape the UI expects."""
+    df = _fetch_table("gw_winnings", season_id)
+    if df.empty:
+        return pd.DataFrame(columns=["Player", "Gameweek", "Rank", "Count", "Pot", "Winnings"])
+
+    return df[["player_name", "gameweek_id", "rank", "count", "pot", "winnings"]].rename(
+        columns={
+            "player_name": "Player",
+            "gameweek_id": "Gameweek",
+            "rank": "Rank",
+            "count": "Count",
+            "pot": "Pot",
+            "winnings": "Winnings",
+        }
+    )
+
+
+@st.cache_data(ttl=300)
+def load_monthly_winnings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load monthly winnings in the shape the UI expects."""
+    df = _fetch_table("monthly_winnings", season_id)
+    if df.empty:
+        return pd.DataFrame(columns=["Player", "Month", "Rank", "Count", "Pot", "Winnings"])
+
+    return df[["player_name", "month", "rank", "count", "pot", "winnings"]].rename(
+        columns={
+            "player_name": "Player",
+            "month": "Month",
+            "rank": "Rank",
+            "count": "Count",
+            "pot": "Pot",
+            "winnings": "Winnings",
+        }
+    )
+
+
+@st.cache_data(ttl=300)
+def load_overall_prizes(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load overall season prizes."""
+    df = _fetch_table("overall_prizes", season_id)
+    if df.empty:
+        return pd.DataFrame(columns=["Player", "final_rank", "prize_amount"])
+
+    return df[["player_name", "final_rank", "prize_amount"]].rename(
+        columns={
+            "player_name": "Player",
+            "final_rank": "final_rank",
+            "prize_amount": "prize_amount",
+        }
+    )
+
+
+@st.cache_data(ttl=300)
+def load_winnings_summary(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load the pre-aggregated winnings summary used by the Total Winnings tab."""
+    df = _fetch_table("winnings_summary", season_id)
+    if df.empty:
+        return pd.DataFrame(
+            columns=["#", "Player", "gw_winnings", "monthly_winnings", "overall_prize", "Winnings"]
+        )
+
+    df = df[["player_name", "gw_winnings", "monthly_winnings", "overall_prize", "total_winnings"]].rename(
+        columns={
+            "player_name": "Player",
+            "gw_winnings": "gw_winnings",
+            "monthly_winnings": "monthly_winnings",
+            "overall_prize": "overall_prize",
+            "total_winnings": "Winnings",
+        }
+    )
+    df = df.sort_values(by="Winnings", ascending=False).reset_index(drop=True)
+    df.insert(0, "#", df.index + 1)
+    return df
+
+
+def upsert_gw_winnings(
+    df: pd.DataFrame,
+    manager_id_map: dict[int, int],
+    gameweek_id_map: dict[int, int],
+    season_id: str = config.SEASON_ID,
+) -> None:
+    """Upsert gameweek winnings."""
+    if df.empty:
+        return
+
+    mapped = df.copy()
+    mapped["manager_id"] = mapped["PlayerId"].map(manager_id_map)
+    mapped["gameweek_id"] = mapped["Gameweek"].map(gameweek_id_map)
+    mapped = mapped.rename(
+        columns={
+            "Player": "player_name",
+            "Rank": "rank",
+            "Count": "count",
+            "Pot": "pot",
+            "Winnings": "winnings",
+        }
+    )
+    mapped = mapped[["manager_id", "gameweek_id", "player_name", "rank", "count", "pot", "winnings"]]
+    mapped["season_id"] = season_id
+
+    records = _prepare_records(mapped)
+    client = get_client()
+    client.table("gw_winnings").upsert(records, on_conflict="manager_id,gameweek_id,season_id").execute()
+
+
+def upsert_monthly_winnings(
+    df: pd.DataFrame,
+    manager_id_map: dict[int, int],
+    season_id: str = config.SEASON_ID,
+) -> None:
+    """Upsert monthly winnings."""
+    if df.empty:
+        return
+
+    mapped = df.copy()
+    mapped["manager_id"] = mapped["PlayerId"].map(manager_id_map)
+    mapped = mapped.rename(
+        columns={
+            "Player": "player_name",
+            "Month": "month",
+            "Rank": "rank",
+            "Count": "count",
+            "Pot": "pot",
+            "Winnings": "winnings",
+        }
+    )
+    mapped = mapped[["manager_id", "month", "player_name", "rank", "count", "pot", "winnings"]]
+    mapped["season_id"] = season_id
+
+    records = _prepare_records(mapped)
+    client = get_client()
+    client.table("monthly_winnings").upsert(records, on_conflict="manager_id,month,season_id").execute()
+
+
+def upsert_overall_prizes(
+    df: pd.DataFrame,
+    manager_id_map: dict[int, int],
+    season_id: str = config.SEASON_ID,
+) -> None:
+    """Upsert overall season prizes."""
+    if df.empty:
+        return
+
+    mapped = df.copy()
+    mapped["manager_id"] = mapped["PlayerId"].map(manager_id_map)
+    mapped = mapped.rename(
+        columns={
+            "Player": "player_name",
+            "final_rank": "final_rank",
+            "prize_amount": "prize_amount",
+        }
+    )
+    mapped = mapped[["manager_id", "player_name", "final_rank", "prize_amount"]]
+    mapped["season_id"] = season_id
+
+    records = _prepare_records(mapped)
+    client = get_client()
+    client.table("overall_prizes").upsert(records, on_conflict="manager_id,season_id").execute()
+
+
+def upsert_winnings_summary(
+    df: pd.DataFrame,
+    manager_id_map: dict[int, int],
+    season_id: str = config.SEASON_ID,
+) -> None:
+    """Upsert the per-manager winnings summary."""
+    if df.empty:
+        return
+
+    mapped = df.copy()
+    mapped["manager_id"] = mapped["PlayerId"].map(manager_id_map)
+    mapped = mapped.rename(
+        columns={
+            "Player": "player_name",
+            "gw_winnings": "gw_winnings",
+            "monthly_winnings": "monthly_winnings",
+            "overall_prize": "overall_prize",
+            "total_winnings": "total_winnings",
+        }
+    )
+    mapped = mapped[[
+        "manager_id",
+        "player_name",
+        "gw_winnings",
+        "monthly_winnings",
+        "overall_prize",
+        "total_winnings",
+    ]]
+    mapped["season_id"] = season_id
+
+    records = _prepare_records(mapped)
+    client = get_client()
+    client.table("winnings_summary").upsert(records, on_conflict="manager_id,season_id").execute()
