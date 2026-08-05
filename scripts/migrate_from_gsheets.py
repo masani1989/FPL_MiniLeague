@@ -12,6 +12,7 @@ import Utils.gsheet_conn as gs
 import Utils.supabase_conn as db
 from Utils.league import league
 import Utils.gameweek as gwk
+import Utils.winnings as winnings
 from Utils import config
 
 
@@ -91,6 +92,38 @@ def main():
             notes=f"Migrated from Google Sheets on {refreshed_at.isoformat()}",
         )
         print(f"Logged migration refresh: {refreshed_at}")
+
+    # ------------------------------------------------------------------
+    # Backfill winnings from the migrated data.
+    # ------------------------------------------------------------------
+    print("Backfilling winnings...")
+    current_gw = gwk.get_recent_completed_gameweek()
+
+    # Gameweek winnings
+    gw_results = gw[["PlayerId", "Player", "Gameweek", "Rank", "Points"]].copy()
+    gameweeks_for_winnings = gameweeks_df.rename(
+        columns={"FplGameweekId": "fpl_gameweek_id", "Finished": "finished"}
+    )
+    gw_winnings = winnings.compute_gw_winnings(gw_results, gameweeks_for_winnings)
+    db.upsert_gw_winnings(gw_winnings, manager_id_map, gameweek_id_map, config.SEASON_ID)
+    print(f"Upserted {len(gw_winnings)} gameweek-winnings rows.")
+
+    # Monthly winnings
+    mn_results = mn[["PlayerId", "Player", "Month", "Rank", "Points"]].copy()
+    mn_winnings = winnings.compute_monthly_winnings(mn_results, current_gw)
+    db.upsert_monthly_winnings(mn_winnings, manager_id_map, config.SEASON_ID)
+    print(f"Upserted {len(mn_winnings)} monthly-winnings rows.")
+
+    # Overall prizes (only if season is complete)
+    ovr_results = ovr[["PlayerId", "Player", "Rank", "Points", "Last_Rank"]].copy()
+    prizes = winnings.compute_overall_prizes(ovr_results, current_gw)
+    db.upsert_overall_prizes(prizes, manager_id_map, config.SEASON_ID)
+    print(f"Upserted {len(prizes)} overall-prize rows.")
+
+    # Summary
+    summary = winnings.compute_winnings_summary(gw_winnings, mn_winnings, prizes)
+    db.upsert_winnings_summary(summary, manager_id_map, config.SEASON_ID)
+    print(f"Upserted {len(summary)} winnings-summary rows.")
 
     print("Migration complete.")
 
