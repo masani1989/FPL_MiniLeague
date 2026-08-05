@@ -1,0 +1,31 @@
+name: Refresh FPL data in Supabase
+
+on:
+  schedule:
+    # Run at 7 minutes past every hour. Avoids the :00 and :30 fleet spikes.
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh Supabase data
+        env:
+          FPL_SEASON_ID: ${{ secrets.FPL_SEASON_ID }}
+          FPL_LEAGUE_ID: ${{ secrets.FPL_LEAGUE_ID }}
+          FPL_LEAGUE_NAME: ${{ secrets.FPL_LEAGUE_NAME }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python Utils/refreshData.py --all
