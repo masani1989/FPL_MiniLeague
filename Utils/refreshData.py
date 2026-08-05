@@ -43,10 +43,19 @@ def _ensure_reference_tables():
 
 
 def refGw(gw=None):
-    """Refresh the latest ongoing/completed gameweek's data."""
+    """Refresh the latest ongoing/completed gameweek's data.
+
+    If `gw` is provided, refresh that specific gameweek and treat it as finished
+    for logging purposes. If not, use the most recent gameweek returned by the
+    FPL API.
+    """
     league_id, manager_id_map, gameweek_id_map = _ensure_reference_tables()
     plList = lg.get_league_players()
-    currGw = gwk.get_recent_completed_gameweek()
+
+    if gw is None:
+        currGw = gwk.get_recent_completed_gameweek()
+    else:
+        currGw = [gw, True]
 
     db.delete_gameweek(currGw[0], gameweek_id_map)
     gw_plr_list = []
@@ -64,8 +73,49 @@ def refGw(gw=None):
     db.log_data_refresh(
         gameweek_id=gameweek_id_map.get(currGw[0]),
         status="success",
-        notes="refGw completed",
+        notes=f"refGw completed for gameweek {currGw[0]} (finished={currGw[1]})",
     )
+
+
+def _compute_and_upsert_winnings(
+    manager_id_map: dict[int, int],
+    gameweek_id_map: dict[int, int],
+    latest_gw: list,
+) -> None:
+    """Recompute and persist all winnings after stats have been refreshed."""
+    import Utils.winnings as winnings
+
+    gameweeks = db.load_gameweeks_df(config.SEASON_ID)
+
+    gw_results = db.load_gameweek_for_refresh(config.SEASON_ID)
+    gw_winnings = winnings.compute_gw_winnings(gw_results, gameweeks)
+    db.upsert_gw_winnings(gw_winnings, manager_id_map, gameweek_id_map, config.SEASON_ID)
+
+    monthly_results = db.load_monthly_for_refresh(config.SEASON_ID)
+    mn_winnings = winnings.compute_monthly_winnings(monthly_results, latest_gw)
+    db.upsert_monthly_winnings(mn_winnings, manager_id_map, config.SEASON_ID)
+
+    overall_results = db.load_overall_for_refresh(config.SEASON_ID)
+    prizes = winnings.compute_overall_prizes(overall_results, latest_gw)
+    db.upsert_overall_prizes(prizes, manager_id_map, config.SEASON_ID)
+
+    summary = winnings.compute_winnings_summary(gw_winnings, mn_winnings, prizes)
+    db.upsert_winnings_summary(summary, manager_id_map, config.SEASON_ID)
+
+
+def refresh_all():
+    """End-to-end refresh used by GitHub Actions and the UI refresh button.
+
+    Steps:
+      1. Sync reference tables.
+      2. Refresh the latest gameweek stats (which also refreshes monthly + overall).
+      3. Recompute and persist winnings.
+    """
+    league_id, manager_id_map, gameweek_id_map = _ensure_reference_tables()
+    latest_gw = gwk.get_recent_completed_gameweek()
+
+    refGw(gw=latest_gw[0])
+    _compute_and_upsert_winnings(manager_id_map, gameweek_id_map, latest_gw)
 
 
 def refMnth(g, manager_id_map=None, gameweek_id_map=None):
@@ -103,12 +153,12 @@ def refOverall(manager_id_map=None):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Refresh FPL Data')
-    parser.add_argument('--gw', type=int, help='Gameweek number to refresh data for', required=False)
+    parser = argparse.ArgumentParser(description='Refresh FPL data in Supabase')
+    parser.add_argument('--gw', type=int, help='Specific gameweek to refresh', required=False)
+    parser.add_argument('--all', action='store_true', help='Refresh latest gameweek and recompute winnings')
     args = parser.parse_args()
+
     if args.gw:
         refGw(args.gw)
-        # refMnth(args.gw)
-        # refOverall()
     else:
-        refMnth(17)
+        refresh_all()

@@ -202,9 +202,10 @@ def test_load_gameweek_for_refresh_returns_player_id(monkeypatch):
     )
 
     df = supabase_conn.load_gameweek_for_refresh()
-    assert list(df.columns) == ["PlayerId", "Player", "Points", "Gameweek"]
+    assert list(df.columns) == ["PlayerId", "Player", "Gameweek", "Rank", "Points"]
     assert df["PlayerId"].dtype == "int64"
     assert df.loc[0, "PlayerId"] == 777321
+    assert df.loc[0, "Rank"] == 1
 
 
 def test_load_monthly_returns_expected_columns_and_types(monkeypatch):

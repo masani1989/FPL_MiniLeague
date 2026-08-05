@@ -167,26 +167,27 @@ def load_gameweek_for_refresh(season_id: str = config.SEASON_ID) -> pd.DataFrame
     """Load gameweek results with manager FPL id for the refresh pipeline."""
     df = _fetch_table("gameweek_results", season_id)
     if df.empty:
-        return pd.DataFrame(columns=["PlayerId", "Player", "Points", "Gameweek"])
+        return pd.DataFrame(columns=["PlayerId", "Player", "Gameweek", "Rank", "Points"])
 
     managers_df = _fetch_table("managers")
     if managers_df.empty:
-        return pd.DataFrame(columns=["PlayerId", "Player", "Points", "Gameweek"])
+        return pd.DataFrame(columns=["PlayerId", "Player", "Gameweek", "Rank", "Points"])
 
     merged = df.merge(
         managers_df[["id", "fpl_entry_id"]],
         left_on="manager_id",
         right_on="id",
     )
-    merged = merged[["fpl_entry_id", "player_name", "points", "gameweek_id"]].rename(
+    merged = merged[["fpl_entry_id", "player_name", "gameweek_id", "rank", "points"]].rename(
         columns={
             "fpl_entry_id": "PlayerId",
             "player_name": "Player",
-            "points": "Points",
             "gameweek_id": "Gameweek",
+            "rank": "Rank",
+            "points": "Points",
         }
     )
-    return merged.astype({"PlayerId": "int64", "Points": "int64", "Gameweek": "int64"})
+    return merged.astype({"PlayerId": "int64", "Gameweek": "int64", "Rank": "int64", "Points": "int64"})
 
 
 @st.cache_data(ttl=300)
