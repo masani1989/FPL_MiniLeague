@@ -5,4 +5,6 @@ __pycache__/
 *.pyc
 .devcontainer/*
 .superpowers/
+.claude/
 docs/*
+scripts/*
