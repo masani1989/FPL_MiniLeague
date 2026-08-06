@@ -8,3 +8,4 @@ __pycache__/
 .claude/
 docs/*
 scripts/*
+!scripts/run_backend.py

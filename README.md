@@ -121,3 +121,76 @@ python Utils/refreshData.py --all
 | `monthly_winnings` | upsert | Recomputed for every completed month. |
 | `overall_prizes` | upsert | Written only after GW 38 is finished. |
 | `winnings_summary` | upsert | One summary row per manager per season. |
+
+## Phase 3: FastAPI + Ollama Backend and Telegram Bot
+
+### What changed
+
+- New `backend/` package with a FastAPI app, async Supabase client, async FPL client,
+  Ollama agent, and Telegram bot.
+- AI tools available via chat:
+  - `get_manager_profile`, `get_standings`, `get_winnings_info`, `compare_managers`
+  - `recommend_transfer`, `recommend_captain`, `evaluate_team`, `project_finish_probability`
+- Telegram bot supports both commands and natural language.
+- Scheduled announcements: upcoming deadline, gameweek results, monthly results,
+  pre-gameweek captain/transfer suggestions.
+- Group chat behaviour: bot only replies when mentioned or replied to.
+- Private chat behaviour: every message is processed; managers can link their FPL
+  entry with `/register <fpl_entry_id>` for personalised responses.
+
+### Setup
+
+1. Install backend dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Pull the Ollama model locally:
+   ```bash
+   ollama pull llama3.1
+   ```
+
+3. Create a Telegram bot with [@BotFather](https://t.me/botfather) and copy the token.
+
+4. Set environment variables:
+   ```bash
+   export OLLAMA_BASE_URL="http://localhost:11434"
+   export OLLAMA_MODEL="llama3.1"
+   export SUPABASE_URL="https://<ref>.supabase.co"
+   export SUPABASE_KEY="<service-role-key>"
+   export TELEGRAM_BOT_TOKEN="<your-bot-token>"
+   export TELEGRAM_WEBHOOK_URL=""   # leave empty for local polling, set for production
+   export SEASON_ID="2026-27"
+   export FPL_LEAGUE_ID="581588"
+   ```
+
+5. Run the migration for Telegram tables:
+   ```bash
+   psql $SUPABASE_DB_URL -f migrations/003_phase3_telegram_and_backend.sql
+   ```
+
+6. Start the backend:
+   ```bash
+   python scripts/run_backend.py
+   ```
+
+### Testing the backend
+
+```bash
+pytest tests/backend -v
+```
+
+### Telegram webhook (production)
+
+Set `TELEGRAM_WEBHOOK_URL=https://your-domain.com/telegram/webhook`. The bot
+will register the webhook on startup and FastAPI will receive updates at that
+path. For local development, leave `TELEGRAM_WEBHOOK_URL` empty and the bot will
+use long-polling.
+
+### Group vs private chat design
+
+- **Group:** Add the bot as a normal member. Mention `@botname` or reply to the
+  bot's messages. Good for league-wide announcements and quick public queries.
+- **Private:** Start a direct chat with the bot. Run `/register <fpl_entry_id>`
+  so commands like `/profile`, `/transfers`, and `/captain` default to your team.
+  Private chats also receive all scheduled announcements if registered.
