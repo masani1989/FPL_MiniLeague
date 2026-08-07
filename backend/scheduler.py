@@ -1,5 +1,4 @@
 """Scheduled announcements for the Telegram bot."""
-import asyncio
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -7,8 +6,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from backend import db
 from backend.agent import OllamaAgent
 from backend.fpl_client import FPLClient
+from backend.gameweek import get_phases, get_recent_completed_gameweek
 from backend.tools.mini_league import get_standings
-from Utils.gameweek import get_phases, get_recent_completed_gameweek
 
 
 scheduler = AsyncIOScheduler()
@@ -116,11 +115,10 @@ async def announce_monthly_results(telegram_app) -> None:
     """Announce monthly results once the most recently completed gameweek is the last one of a month."""
     if telegram_app is None:
         return
-    loop = asyncio.get_running_loop()
-    recent_gw, is_finished = await loop.run_in_executor(None, get_recent_completed_gameweek)
+    recent_gw, is_finished = await get_recent_completed_gameweek()
     if not is_finished:
         return
-    phases = get_phases()
+    phases = await get_phases()
     for month_name, gws in phases.items():
         if recent_gw == gws[-1]:
             rows = await get_standings("monthly", month=month_name)
