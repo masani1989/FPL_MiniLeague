@@ -33,7 +33,7 @@ def test_telegram_webhook_accepts_update(client):
     with patch("backend.api.agent", fake_app):
         pass
     with patch.object(client.app.state, "telegram_app", fake_app):
-        with patch.object(fake_app.bot, "de_json", return_value=fake_update):
+        with patch("backend.api.Update.de_json", return_value=fake_update):
             response = client.post("/telegram/webhook", json={"update_id": 123})
     assert response.status_code == 200
     assert response.json() == {"ok": True}
@@ -74,7 +74,7 @@ def test_telegram_webhook_accepts_update_with_correct_secret_token(client, monke
     fake_app.bot = MagicMock()
     fake_update = MagicMock()
     client.app.state.telegram_app = fake_app
-    with patch.object(fake_app.bot, "de_json", return_value=fake_update):
+    with patch("backend.api.Update.de_json", return_value=fake_update):
         response = client.post(
             "/telegram/webhook",
             json={"update_id": 123},

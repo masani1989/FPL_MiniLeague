@@ -2,6 +2,7 @@
 import hmac
 
 from fastapi import APIRouter, Request, HTTPException
+from telegram import Update
 
 from backend import config
 from backend.agent import OllamaAgent
@@ -33,6 +34,6 @@ async def telegram_webhook(request: Request) -> dict:
     if bot_app is None:
         raise HTTPException(status_code=503, detail="Telegram bot not configured")
     data = await request.json()
-    update = bot_app.bot.de_json(data, bot_app.bot)
+    update = Update.de_json(data, bot_app.bot)
     bot_app.update_queue.put_nowait(update)
     return {"ok": True}
