@@ -195,3 +195,50 @@ use long-polling.
 - **Private:** Start a direct chat with the bot. Run `/register <fpl_entry_id>`
   so commands like `/profile`, `/transfers`, and `/captain` default to your team.
   Private chats also receive all scheduled announcements if registered.
+
+## Phase 4: Host Backend on Render + Telegram Webhooks
+
+### 1. Create the Render service
+
+- Push `major_update` to GitHub.
+- In Render dashboard: **New > Web Service**.
+- Connect the GitHub repo and select branch `major_update`.
+- Render will read `render.yaml` (Blueprint) and set:
+  - Build command: `pip install -r requirements.txt`
+  - Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+  - Free plan.
+
+### 2. Create environment group
+
+In Render, create an **Environment Group** named `fpl-backend-secrets` and add:
+
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `OLLAMA_BASE_URL` (e.g., `https://ollama.com` for Ollama Cloud)
+- `OLLAMA_MODEL` (e.g., `glm-5.2:cloud`)
+- `OLLAMA_API_KEY`
+- `OPENAI_API_KEY` (optional fallback)
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_URL` = `https://<your-render-service>.onrender.com/telegram/webhook`
+- `FPL_LEAGUE_ID`
+- `SEASON_ID`
+
+Attach the group to the web service.
+
+### 3. Configure Telegram bot with BotFather
+
+- Create bot via [@BotFather](https://t.me/BotFather), get token.
+- Set `/setprivacy` to **Disabled** so the bot can read group messages.
+- Add bot to your FPL mini-league group.
+
+### 4. Verify deployment
+
+- Visit `https://<your-service>.onrender.com/health`.
+- Send `/start` to the bot in a private chat; it should reply.
+- Mention the bot in the group; it should reply.
+
+### Notes
+
+- Render free tier sleeps after 15 minutes of inactivity. First request after sleep will be slow (~30–60s).
+- Local Ollama does not work on Render; use Ollama Cloud or an OpenAI-compatible provider.
+- Telegram webhook is set automatically on startup if `TELEGRAM_WEBHOOK_URL` is set.
