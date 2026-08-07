@@ -23,7 +23,7 @@ def test_build_telegram_app_returns_none_without_token():
 
 
 @pytest.mark.asyncio
-async def test_set_webhook_on_startup_calls_bot_set_webhook():
+async def test_set_webhook_on_startup_passes_secret_token_when_secret_set():
     app = MagicMock()
     app.bot.set_webhook = AsyncMock()
     await set_webhook_on_startup(app, "https://example.com/webhook", "super-secret")
@@ -31,8 +31,8 @@ async def test_set_webhook_on_startup_calls_bot_set_webhook():
 
 
 @pytest.mark.asyncio
-async def test_set_webhook_on_startup_defaults_secret_to_empty_string():
+async def test_set_webhook_on_startup_omits_secret_token_when_secret_empty():
     app = MagicMock()
     app.bot.set_webhook = AsyncMock()
     await set_webhook_on_startup(app, "https://example.com/webhook")
-    app.bot.set_webhook.assert_awaited_once_with(url="https://example.com/webhook", secret_token="")
+    app.bot.set_webhook.assert_awaited_once_with(url="https://example.com/webhook")

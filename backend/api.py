@@ -1,4 +1,6 @@
 """FastAPI routers for the backend."""
+import hmac
+
 from fastapi import APIRouter, Request, HTTPException
 
 from backend import config
@@ -25,7 +27,7 @@ async def telegram_webhook(request: Request) -> dict:
     secret = config.TELEGRAM_WEBHOOK_SECRET
     if secret:
         header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if header != secret:
+        if not hmac.compare_digest(secret, header or ""):
             raise HTTPException(status_code=401, detail="Unauthorized")
     bot_app = request.app.state.telegram_app
     if bot_app is None:
