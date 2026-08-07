@@ -14,18 +14,18 @@ Season and league ids are centralized in `Utils/config.py` and can be overridden
    ```toml
    [app]
    season_id = "2025-26"
-   fpl_league_id = "282978"
+   fpl_league_id = "581588"
    league_name = "Fantasy Kings"
    ```
 
 2. **Via environment variables** (useful for local development or CI):
    ```bash
    export FPL_SEASON_ID="2025-26"
-   export FPL_LEAGUE_ID="282978"
+   export FPL_LEAGUE_ID="581588"
    export FPL_LEAGUE_NAME="Fantasy Kings"
    ```
 
-Defaults target Fantasy Kings 2025-26 (`282978`).
+Defaults target Fantasy Kings 2025-26 (`581588`).
 
 ### Setup
 
@@ -145,17 +145,14 @@ python Utils/refreshData.py --all
    pip install -r requirements.txt
    ```
 
-2. Pull the Ollama model locally:
-   ```bash
-   ollama pull llama3.1
-   ```
+2. Create a Telegram bot with [@BotFather](https://t.me/botfather) and copy the token.
 
-3. Create a Telegram bot with [@BotFather](https://t.me/botfather) and copy the token.
-
-4. Set environment variables:
+3. Set environment variables (or add them to `.streamlit/secrets.toml` under `[backend]`):
    ```bash
    export OLLAMA_BASE_URL="http://localhost:11434"
-   export OLLAMA_MODEL="llama3.1"
+   export OLLAMA_MODEL="llama3.2"
+   export OLLAMA_API_KEY="<your-ollama-api-key>"   # only for Ollama Cloud; local ignores this
+   export OPENAI_API_KEY="<your-api-key>"          # optional: for OpenAI-compatible providers
    export SUPABASE_URL="https://<ref>.supabase.co"
    export SUPABASE_KEY="<service-role-key>"
    export TELEGRAM_BOT_TOKEN="<your-bot-token>"
@@ -163,6 +160,10 @@ python Utils/refreshData.py --all
    export SEASON_ID="2026-27"
    export FPL_LEAGUE_ID="581588"
    ```
+
+   - Local Ollama: `OLLAMA_BASE_URL=http://localhost:11434`, no API key needed.
+   - Ollama Cloud: `OLLAMA_BASE_URL=https://ollama.com`, set `OLLAMA_API_KEY`.
+   - OpenAI-compatible provider: set `OLLAMA_BASE_URL` to their `/v1` endpoint and `OPENAI_API_KEY`.
 
 5. Run the migration for Telegram tables:
    ```bash

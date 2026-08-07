@@ -19,13 +19,14 @@ def _upcoming_fixtures_for_team(team_id: int, fixtures: list[dict], next_gw: int
     return (home + away)[:n]
 
 
-async def recommend_transfer(player_name: str) -> dict:
+async def recommend_transfer(player_name: str | None = None) -> dict:
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
     elements = bootstrap.get("elements", [])
     top = _top_players_by_xg_xa(elements, top_n=5)
     return {
         "recommendation": "Consider transferring in players with high expected goals + assists and good fixtures.",
+        "for_manager": player_name or "league",
         "top_targets": [
             {
                 "name": p.get("web_name"),

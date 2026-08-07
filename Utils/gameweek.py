@@ -7,6 +7,7 @@ import logging
 import streamlit as st
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
 
 @st.cache_data()
 def get_gameweek_data():
@@ -64,7 +65,7 @@ def get_recent_completed_gameweek():
 
     # If no completed gameweek found, return default
     logging.info('No completed gameweek found before ' + str(now))
-    return [0, False]
+    return [1, False]
 
 
 def get_phases():

@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.WARNING)
 
 
 class league:
-    def __init__(self, leagueId=282978):
+    def __init__(self, leagueId=581588):
         self.leagueId = leagueId
         self.base_url = p.base_url
 
@@ -19,7 +19,7 @@ class league:
 
         connect = {}
         session = requests.session()
-        league_url = f'{self.base_url}leagues-classic/{self.leagueId}/standings'  # 288563,331953,140708,282978
+        league_url = f'{self.base_url}leagues-classic/{self.leagueId}/standings'  # 288563,331953,140708,581588
 
         try:
             connect = session.get(league_url).json()
@@ -54,9 +54,9 @@ class league:
 
         try:
             players = [{'Id': player['entry'], 'Team': player['entry_name'],
-                        'Player': player['player_name'].split(' ')[0].capitalize() + ' '
-                                  + player['player_name'].split(' ')[1].capitalize()}
-                       for player in data['standings']['results']]
+                        'Player': player['player_first_name'].capitalize() + ' '
+                                  + player['player_last_name'].capitalize()}
+                       for player in data['new_entries']['results']]
             logging.info('Total Players in the league -> ' + str(len(players)))
 
         except Exception as e:
@@ -91,7 +91,7 @@ class league:
 
 
 if __name__ == '__main__':
-    t = league(282978)
+    t = league(581588)
 
     print(t.get_league_name())
     print('------------------------------------------------')
@@ -100,4 +100,4 @@ if __name__ == '__main__':
     p_df.rename(columns={'id': 'Player Id', 'team': 'Team Name', 'player': 'Player Name'})
     print(p_df.get('Player'))  # p_df.to_string(index=False)
     print('------------------------------------------------')
-    print(t.get_league_standings())
+    # print(t.get_league_standings())

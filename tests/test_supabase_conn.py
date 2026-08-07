@@ -89,12 +89,12 @@ def test_sync_league_inserts_and_returns_id(monkeypatch):
     client = _make_mock_client()
     monkeypatch.setattr(supabase_conn, "get_client", lambda: client)
 
-    league_id = supabase_conn.sync_league("2025-26", 282978, "Fantasy Kings")
+    league_id = supabase_conn.sync_league("2025-26", 581588, "Fantasy Kings")
 
-    assert league_id == 282978
+    assert league_id == 581588
     assert len(client._upserts) == 1
     records, on_conflict = client._upserts[0]
-    assert records[0]["fpl_league_id"] == 282978
+    assert records[0]["fpl_league_id"] == 581588
     assert records[0]["name"] == "Fantasy Kings"
     assert records[0]["season_id"] == "2025-26"
     assert on_conflict == "fpl_league_id,season_id"
@@ -102,7 +102,7 @@ def test_sync_league_inserts_and_returns_id(monkeypatch):
 
 def test_sync_managers_returns_mapping(monkeypatch):
     upsert_response = [
-        {"id": 1, "fpl_entry_id": 777321, "league_id": 282978,
+        {"id": 1, "fpl_entry_id": 777321, "league_id": 581588,
          "player_name": "A B", "team_name": "T1"},
     ]
     client = _make_mock_client(upsert_response=upsert_response)
@@ -113,7 +113,7 @@ def test_sync_managers_returns_mapping(monkeypatch):
         "Player": ["A B"],
         "Team": ["T1"],
     })
-    mapping = supabase_conn.sync_managers(282978, managers_df)
+    mapping = supabase_conn.sync_managers(581588, managers_df)
 
     assert mapping == {777321: 1}
     assert len(client._upserts) == 1
@@ -190,7 +190,7 @@ def test_load_gameweek_for_refresh_returns_player_id(monkeypatch):
          "points": 46, "rank": 1}
     ]
     manager_rows = [
-        {"id": 1, "fpl_entry_id": 777321, "league_id": 282978,
+        {"id": 1, "fpl_entry_id": 777321, "league_id": 581588,
          "player_name": "A B", "team_name": "T1"}
     ]
     monkeypatch.setattr(

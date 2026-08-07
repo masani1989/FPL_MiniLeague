@@ -2,7 +2,7 @@
 
 Values are read from Streamlit secrets first (so production can override them
 without code changes), then from environment variables, then fall back to
-sensible defaults for Fantasy Kings 2025-26.
+sensible defaults for Fantasy Kings 2026/27.
 """
 import os
 
@@ -21,9 +21,9 @@ def _get_int(secret_key: str, env_key: str, default: int) -> int:
     return int(raw)
 
 
-SEASON_ID = _get_str("season_id", "FPL_SEASON_ID", "2025-26")
-FPL_LEAGUE_ID = _get_int("fpl_league_id", "FPL_LEAGUE_ID", 282978)
-LEAGUE_NAME = _get_str("league_name", "FPL_LEAGUE_NAME", "Fantasy Kings")
+SEASON_ID = _get_str("season_id", "FPL_SEASON_ID", "2026-27")
+FPL_LEAGUE_ID = _get_int("fpl_league_id", "FPL_LEAGUE_ID", 581588)
+LEAGUE_NAME = _get_str("league_name", "FPL_LEAGUE_NAME", "Fantasy Kings 2026/27")
 
 # For Phase 1 the internal Supabase league.id is the same as the FPL league id.
 # This removes the need to look it up every time we write stats.

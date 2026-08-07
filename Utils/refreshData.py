@@ -65,16 +65,24 @@ def refGw(gw=None):
         gw_plr_list.append(plr_dict)
 
     gw_df = pd.DataFrame.from_records(gw_plr_list)
-    gw_df['Rank'] = gw_df.groupby('Gameweek')['Points'].rank(ascending=False, method='dense')
+    if not gw_df.empty:
+        gw_df['Rank'] = gw_df.groupby('Gameweek')['Points'].rank(ascending=False, method='dense')
 
-    db.upsert_gameweek(gw_df, manager_id_map, gameweek_id_map, config.SEASON_ID)
-    refMnth(currGw[0], manager_id_map, gameweek_id_map)
-    refOverall(manager_id_map)
-    db.log_data_refresh(
-        gameweek_id=gameweek_id_map.get(currGw[0]),
-        status="success",
-        notes=f"refGw completed for gameweek {currGw[0]} (finished={currGw[1]})",
-    )
+        db.upsert_gameweek(gw_df, manager_id_map, gameweek_id_map, config.SEASON_ID)
+        refMnth(currGw[0], manager_id_map, gameweek_id_map)
+        refOverall(manager_id_map)
+        db.log_data_refresh(
+            gameweek_id=gameweek_id_map.get(currGw[0]),
+            status="success",
+            notes=f"refGw completed for gameweek {currGw[0]} (finished={currGw[1]})",
+        )
+
+    else:
+        db.log_data_refresh(
+            gameweek_id=gameweek_id_map.get(currGw[0]),
+            status="failure",
+            notes=f"refGw failed for gameweek {currGw[0]} (finished={currGw[1]})",
+        )
 
 
 def _compute_and_upsert_winnings(

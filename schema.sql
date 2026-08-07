@@ -9,7 +9,7 @@ create table if not exists seasons (
 );
 
 insert into seasons (id, name, is_active)
-values ('2025-26', 'Fantasy Kings 2025-26', true)
+values ('2026-27', 'Fantasy Kings 2026/27', true)
 on conflict (id) do nothing;
 
 -- Mini-league reference table.

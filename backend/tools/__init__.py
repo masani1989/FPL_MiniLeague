@@ -1,10 +1,34 @@
 """Tool registry for the FPL AI agent."""
 from backend.tools import mini_league, recommendations
 
-TOOLS = [
+
+def _build_tool_schema(tool: dict) -> dict:
+    """Convert our concise tool metadata into an Ollama/OpenAI functions schema."""
+    properties = {}
+    required = []
+    for name, description in tool["parameters"].items():
+        properties[name] = {"type": "string", "description": description}
+        if "optional" not in description.lower():
+            required.append(name)
+    return {
+        "type": "function",
+        "function": {
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+_TOOLS_RAW = [
     {
         "name": "get_manager_profile",
-        "description": "Return a manager's overall rank, points, team name and recent form.",
+        "description": "Return a manager's overall rank, points, team name and recent form. Always call this when asked about a specific manager.",
         "parameters": {"player_name": "string"},
     },
     {
@@ -19,13 +43,13 @@ TOOLS = [
     },
     {
         "name": "compare_managers",
-        "description": "Compare two managers by overall rank, points and recent gameweek performance.",
+        "description": "Compare two managers by overall rank, points and recent gameweek performance. Always call this for comparison requests.",
         "parameters": {"player_a": "string", "player_b": "string"},
     },
     {
         "name": "recommend_transfer",
-        "description": "Suggest transfer outs/ins for a manager using expected goals/assists and fixtures.",
-        "parameters": {"player_name": "string"},
+        "description": "Suggest transfer outs/ins using expected goals/assists and fixtures. player_name is optional; use 'league' when no manager is specified.",
+        "parameters": {"player_name": "optional string"},
     },
     {
         "name": "recommend_captain",
@@ -34,7 +58,7 @@ TOOLS = [
     },
     {
         "name": "evaluate_team",
-        "description": "Evaluate a manager's current team for the upcoming gameweek.",
+        "description": "Evaluate a manager's current team for the upcoming gameweek. Always call this for team evaluation requests.",
         "parameters": {"player_name": "string"},
     },
     {
@@ -44,6 +68,7 @@ TOOLS = [
     },
 ]
 
+TOOLS = [_build_tool_schema(t) for t in _TOOLS_RAW]
 NAME_TO_FUNCTION = {
     "get_manager_profile": mini_league.get_manager_profile,
     "get_standings": mini_league.get_standings,

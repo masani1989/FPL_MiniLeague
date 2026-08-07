@@ -104,7 +104,7 @@ with _help:
               each gameweek's rank and points earned]
         """, unsafe_allow_html=True)
 
-lg = league(282978)
+lg = league(581588)
 lg_name = lg.get_league_name()
 
 st.divider()

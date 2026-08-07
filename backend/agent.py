@@ -1,21 +1,15 @@
-"""Ollama-powered agent with a tool-calling loop."""
+"""LLM agent using Ollama native /api/chat with tool support."""
 import json
-import re
 
 import httpx
 
 from backend import config
 from backend.models import ChatResponse
 from backend.tools import TOOLS, run_tool
-import backend.tools as _tools
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are the Fantasy Kings AI assistant for a private FPL mini-league.
-You have access to the following tools. To use a tool, output ONLY a JSON object in this exact format:
-{{"tool": "TOOL_NAME", "parameters": {{"param": "value"}}}}
-
-Available tools:
-{tools}
+You have access to tools that can query mini-league data and give FPL advice.
 
 Rules:
 - If the user asks for standings, winnings, a manager profile, comparisons, transfer/captain advice, team evaluation, or finish probability, call the relevant tool first.
@@ -26,11 +20,20 @@ Rules:
 
 
 def build_system_prompt() -> str:
-    tool_lines = []
-    for t in TOOLS:
-        params = ", ".join(f"{k} ({v})" for k, v in t["parameters"].items())
-        tool_lines.append(f"- {t['name']}: {t['description']} Params: {params}")
-    return SYSTEM_PROMPT_TEMPLATE.format(tools="\n".join(tool_lines))
+    return SYSTEM_PROMPT_TEMPLATE
+
+
+def _normalize_tool_name(name: str) -> str:
+    """Strip common namespace/prefix noise from tool names."""
+    return name.split(".")[-1].strip()
+
+
+def _tool_result_message(tool_call: dict, result: dict) -> dict:
+    """Build a native Ollama tool result message."""
+    return {
+        "role": "tool",
+        "content": json.dumps(result),
+    }
 
 
 class OllamaAgent:
@@ -40,34 +43,35 @@ class OllamaAgent:
         self.system_prompt = build_system_prompt()
         self.history: list[dict] = []
 
-    async def _call_ollama(self, messages: list[dict]) -> str:
+    async def _call_llm(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> dict:
+        headers = {"Content-Type": "application/json"}
+        # Ollama Cloud uses an API key; local Ollama ignores auth.
+        api_key = config.OLLAMA_API_KEY
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        payload: dict = {"model": self.model, "messages": messages, "stream": False}
+        if tools:
+            payload["tools"] = tools
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 f"{self.base_url}/api/chat",
-                json={"model": self.model, "messages": messages, "stream": False},
+                headers=headers,
+                json=payload,
             )
             response.raise_for_status()
-            return response.json().get("message", {}).get("content", "")
+            return response.json()
 
-    def _extract_tool_call(self, text: str) -> dict | None:
-        for i, ch in enumerate(text):
-            if ch != "{":
-                continue
-            depth = 0
-            for j, inner in enumerate(text[i:], start=i):
-                if inner == "{":
-                    depth += 1
-                elif inner == "}":
-                    depth -= 1
-                    if depth == 0:
-                        candidate = text[i:j + 1]
-                        if '"tool"' in candidate:
-                            try:
-                                return json.loads(candidate)
-                            except json.JSONDecodeError:
-                                break
-                        break
-        return None
+    def _extract_tool_calls(self, llm_response: dict) -> list[dict]:
+        message = llm_response.get("message", {})
+        return message.get("tool_calls", []) or []
+
+    def _reply_text(self, llm_response: dict) -> str:
+        message = llm_response.get("message", {})
+        return message.get("content", "") or ""
 
     async def chat(self, message: str, chat_id: str | None = None) -> ChatResponse:
         messages = [
@@ -75,24 +79,33 @@ class OllamaAgent:
             *self.history,
             {"role": "user", "content": message},
         ]
-        tool_calls = []
+        tool_calls_log: list[dict] = []
         for _ in range(3):
-            response_text = await self._call_ollama(messages)
-            tool_call = self._extract_tool_call(response_text)
-            if tool_call is None:
-                # No tool call; this is the final answer.
+            response = await self._call_llm(messages, tools=TOOLS)
+            tool_calls = self._extract_tool_calls(response)
+            if not tool_calls:
+                reply = self._reply_text(response)
                 self.history.extend([
                     {"role": "user", "content": message},
-                    {"role": "assistant", "content": response_text},
+                    {"role": "assistant", "content": reply},
                 ])
                 if len(self.history) > 20:
                     self.history = self.history[-20:]
-                return ChatResponse(reply=response_text.strip(), tool_calls=tool_calls)
+                return ChatResponse(reply=reply.strip(), tool_calls=tool_calls_log)
 
-            tool_calls.append(tool_call)
-            result = await _tools.run_tool(tool_call.get("tool"), tool_call.get("parameters", {}))
-            messages.append({"role": "assistant", "content": json.dumps(tool_call)})
-            messages.append({"role": "tool", "content": json.dumps(result)})
+            assistant_message = response.get("message", {})
+            messages.append(assistant_message)
+            for tool_call in tool_calls:
+                tool_calls_log.append(tool_call)
+                function_name = _normalize_tool_name(tool_call.get("function", {}).get("name", ""))
+                arguments = tool_call.get("function", {}).get("arguments", {})
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                result = await run_tool(function_name, arguments)
+                messages.append(_tool_result_message(tool_call, result))
 
-        final = await self._call_ollama(messages)
-        return ChatResponse(reply=final.strip(), tool_calls=tool_calls)
+        final_response = await self._call_llm(messages)
+        return ChatResponse(reply=self._reply_text(final_response).strip(), tool_calls=tool_calls_log)

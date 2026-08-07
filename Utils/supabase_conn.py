@@ -62,6 +62,7 @@ def sync_managers(league_id: int, managers_df: pd.DataFrame) -> dict[int, int]:
     Expected input columns: PlayerId, Player, Team.
     """
     if managers_df.empty:
+        print("No managers to sync for league_id", league_id)
         return {}
 
     client = get_client()
