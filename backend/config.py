@@ -50,5 +50,7 @@ SUPABASE_KEY = _get_secret_str("supabase", "key", "SUPABASE_KEY", "")
 TELEGRAM_BOT_TOKEN = _get_secret_str("backend", "telegram_bot_token", "TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_URL = _get_secret_str("backend", "telegram_webhook_url", "TELEGRAM_WEBHOOK_URL", "")
 
+PORT = _get_int(None, None, "PORT", 8000)
+
 FPL_LEAGUE_ID = _get_int("app", "fpl_league_id", "FPL_LEAGUE_ID", 581588)
 SEASON_ID = _get_secret_str("app", "season_id", "SEASON_ID", "2026-27")
