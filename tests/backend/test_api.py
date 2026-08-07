@@ -8,7 +8,9 @@ from backend.main import create_app
 @pytest.fixture
 def client():
     app = create_app()
-    return TestClient(app)
+    test_client = TestClient(app)
+    test_client.app.state.telegram_app = None
+    return test_client
 
 
 def test_health(client):
@@ -22,3 +24,24 @@ def test_chat_endpoint(client):
         response = client.post("/chat", json={"message": "hi"})
     assert response.status_code == 200
     assert response.json()["reply"] == "Hello"
+
+
+def test_telegram_webhook_accepts_update(client):
+    fake_app = MagicMock()
+    fake_app.bot = MagicMock()
+    fake_update = MagicMock()
+    with patch("backend.api.agent", fake_app):
+        pass
+    with patch.object(client.app.state, "telegram_app", fake_app):
+        with patch.object(fake_app.bot, "de_json", return_value=fake_update):
+            response = client.post("/telegram/webhook", json={"update_id": 123})
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    fake_app.update_queue.put_nowait.assert_called_once_with(fake_update)
+
+
+def test_telegram_webhook_returns_error_when_bot_missing(client):
+    client.app.state.telegram_app = None
+    response = client.post("/telegram/webhook", json={"update_id": 123})
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]

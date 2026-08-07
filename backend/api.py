@@ -1,5 +1,5 @@
 """FastAPI routers for the backend."""
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 
 from backend.agent import OllamaAgent
 from backend.models import ChatRequest, ChatResponse
@@ -23,7 +23,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
 async def telegram_webhook(request: Request) -> dict:
     bot_app = request.app.state.telegram_app
     if bot_app is None:
-        return {"error": "Telegram bot not configured"}
+        raise HTTPException(status_code=503, detail="Telegram bot not configured")
     data = await request.json()
-    await bot_app.update_queue.put(bot_app.bot.de_json(data, bot_app.bot))
+    update = bot_app.bot.de_json(data, bot_app.bot)
+    bot_app.update_queue.put_nowait(update)
     return {"ok": True}
