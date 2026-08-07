@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from backend import config
 from backend.api import router
-from backend.telegram_bot import build_telegram_app
+from backend.telegram_bot import build_telegram_app, set_webhook_on_startup
 from backend.scheduler import start_scheduler, stop_scheduler
 
 
@@ -15,9 +15,11 @@ async def lifespan(app: FastAPI):
     app.state.telegram_app = telegram_app
     if telegram_app:
         await telegram_app.initialize()
-        await telegram_app.start()
         if config.TELEGRAM_WEBHOOK_URL:
-            await telegram_app.bot.set_webhook(config.TELEGRAM_WEBHOOK_URL)
+            await set_webhook_on_startup(telegram_app, config.TELEGRAM_WEBHOOK_URL)
+        else:
+            await telegram_app.bot.delete_webhook(drop_pending_updates=True)
+        await telegram_app.start()
     start_scheduler(telegram_app)
     yield
     stop_scheduler()

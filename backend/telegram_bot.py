@@ -28,6 +28,13 @@ def build_telegram_app(token: str) -> Application | None:
     return app
 
 
+async def set_webhook_on_startup(app: Application, webhook_url: str) -> None:
+    """Set Telegram webhook URL if one is configured."""
+    if not webhook_url:
+        return
+    await app.bot.set_webhook(url=webhook_url)
+
+
 def _bot_username(context: ContextTypes.DEFAULT_TYPE) -> str:
     return context.bot.username or ""
 
