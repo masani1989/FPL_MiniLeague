@@ -36,3 +36,13 @@ def test_telegram_webhook_url_from_secrets(monkeypatch):
     monkeypatch.setenv("TELEGRAM_WEBHOOK_URL", "https://fplbot.onrender.com/telegram/webhook")
     from backend.config import _get_secret_str
     assert _get_secret_str("backend", "telegram_webhook_url", "TELEGRAM_WEBHOOK_URL", "") == "https://fplbot.onrender.com/telegram/webhook"
+
+
+def test_telegram_webhook_secret_defaults_to_empty_string():
+    assert cfg.TELEGRAM_WEBHOOK_SECRET == ""
+
+
+def test_telegram_webhook_secret_reads_from_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "super-secret")
+    from backend.config import _get_secret_str
+    assert _get_secret_str("backend", "telegram_webhook_secret", "TELEGRAM_WEBHOOK_SECRET", "") == "super-secret"

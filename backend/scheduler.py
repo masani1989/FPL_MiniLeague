@@ -78,6 +78,8 @@ def _parse_deadline(deadline: str) -> datetime:
 
 
 async def announce_upcoming_deadline(telegram_app) -> None:
+    if telegram_app is None:
+        return
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
     now_utc = datetime.now(timezone.utc)
@@ -93,6 +95,8 @@ async def announce_upcoming_deadline(telegram_app) -> None:
 
 
 async def announce_gameweek_results(telegram_app) -> None:
+    if telegram_app is None:
+        return
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
     now_utc = datetime.now(timezone.utc)
@@ -110,6 +114,8 @@ async def announce_gameweek_results(telegram_app) -> None:
 
 async def announce_monthly_results(telegram_app) -> None:
     """Announce monthly results once the most recently completed gameweek is the last one of a month."""
+    if telegram_app is None:
+        return
     loop = asyncio.get_running_loop()
     recent_gw, is_finished = await loop.run_in_executor(None, get_recent_completed_gameweek)
     if not is_finished:
@@ -126,6 +132,8 @@ async def announce_monthly_results(telegram_app) -> None:
 
 
 async def pre_gameweek_suggestions(telegram_app) -> None:
+    if telegram_app is None:
+        return
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
     now_utc = datetime.now(timezone.utc)

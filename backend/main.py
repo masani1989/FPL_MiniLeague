@@ -16,14 +16,18 @@ async def lifespan(app: FastAPI):
     if telegram_app:
         await telegram_app.initialize()
         if config.TELEGRAM_WEBHOOK_URL:
-            await set_webhook_on_startup(telegram_app, config.TELEGRAM_WEBHOOK_URL)
+            await set_webhook_on_startup(telegram_app, config.TELEGRAM_WEBHOOK_URL, config.TELEGRAM_WEBHOOK_SECRET)
         else:
             await telegram_app.bot.delete_webhook(drop_pending_updates=True)
         await telegram_app.start()
+        if not config.TELEGRAM_WEBHOOK_URL:
+            await telegram_app.updater.start_polling()
     start_scheduler(telegram_app)
     yield
     stop_scheduler()
     if telegram_app:
+        if not config.TELEGRAM_WEBHOOK_URL:
+            await telegram_app.updater.stop()
         await telegram_app.stop()
         await telegram_app.shutdown()
 

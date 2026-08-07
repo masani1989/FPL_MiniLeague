@@ -1,6 +1,7 @@
 """FastAPI routers for the backend."""
 from fastapi import APIRouter, Request, HTTPException
 
+from backend import config
 from backend.agent import OllamaAgent
 from backend.models import ChatRequest, ChatResponse
 
@@ -21,6 +22,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 @router.post("/telegram/webhook")
 async def telegram_webhook(request: Request) -> dict:
+    secret = config.TELEGRAM_WEBHOOK_SECRET
+    if secret:
+        header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if header != secret:
+            raise HTTPException(status_code=401, detail="Unauthorized")
     bot_app = request.app.state.telegram_app
     if bot_app is None:
         raise HTTPException(status_code=503, detail="Telegram bot not configured")

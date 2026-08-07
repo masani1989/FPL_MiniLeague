@@ -157,6 +157,7 @@ python Utils/refreshData.py --all
    export SUPABASE_KEY="<service-role-key>"
    export TELEGRAM_BOT_TOKEN="<your-bot-token>"
    export TELEGRAM_WEBHOOK_URL=""   # leave empty for local polling, set for production
+   export TELEGRAM_WEBHOOK_SECRET=""  # set when using a webhook so Telegram can authenticate callbacks
    export SEASON_ID="2026-27"
    export FPL_LEAGUE_ID="581588"
    ```
@@ -220,6 +221,7 @@ In Render, create an **Environment Group** named `fpl-backend-secrets` and add:
 - `OPENAI_API_KEY` (optional fallback)
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_URL` = `https://<your-render-service>.onrender.com/telegram/webhook`
+- `TELEGRAM_WEBHOOK_SECRET` — optional but recommended; must match the secret configured with BotFather via `setWebhook`
 - `FPL_LEAGUE_ID`
 - `SEASON_ID`
 
