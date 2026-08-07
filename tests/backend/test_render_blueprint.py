@@ -12,5 +12,6 @@ def test_render_yaml_exists_and_is_valid():
     assert service["type"] == "web"
     assert "buildCommand" in service
     assert "startCommand" in service
+    assert "requirements-backend.txt" in service["buildCommand"]
     env_groups = [e.get("name") for e in service.get("envVarGroups", [])]
     assert "fpl-backend-secrets" in env_groups
