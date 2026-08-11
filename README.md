@@ -239,6 +239,22 @@ Attach the group to the web service.
 - Send `/start` to the bot in a private chat; it should reply.
 - Mention the bot in the group; it should reply.
 
+### Restricting announcements to one group
+
+Set `ALLOWED_TELEGRAM_CHAT_IDS` (env var or `[backend] allowed_telegram_chat_ids` in secrets.toml) to a comma-separated list of chat IDs that may receive scheduled announcements. Group chats have negative IDs.
+
+To find your group's chat ID:
+
+1. Add the bot to the group.
+2. Send a message in the group.
+3. Visit `https://api.telegram.org/bot<TOKEN>/getUpdates` and look for `"chat":{"id":-123456789,...}`.
+
+Leave empty to allow all chats (default).
+
+### Keep-alive cron
+
+The `render.yaml` Blueprint includes a `fpl-keepalive` cron service that pings `https://<your-service>.onrender.com/health` every 10 minutes so the free-tier web service does not sleep. Update the URL in `render.yaml` to match your service name before deploying.
+
 ### Notes
 
 - Render free tier sleeps after 15 minutes of inactivity. First request after sleep will be slow (~30–60s).
