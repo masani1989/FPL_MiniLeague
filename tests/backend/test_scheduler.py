@@ -57,3 +57,63 @@ async def test_send_to_active_chats_skips_already_posted():
 
     telegram_app.bot.send_message.assert_not_awaited()
     mock_log.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_to_active_chats_skips_disallowed_chats(monkeypatch):
+    monkeypatch.setattr(scheduler.config, "allowed_telegram_chat_ids", lambda: {-100})
+    chats = [
+        {"chat_id": -100, "chat_type": "group", "title": "Allowed Group"},
+        {"chat_id": -200, "chat_type": "group", "title": "Other Group"},
+    ]
+
+    async def fake_get_chats():
+        return chats
+
+    async def fake_already_posted(chat_id, kind, trigger_key):
+        return False
+
+    async def fake_log(chat_id, kind, trigger_key, text):
+        return None
+
+    monkeypatch.setattr(scheduler.db, "get_telegram_chats", fake_get_chats)
+    monkeypatch.setattr(scheduler.db, "announcement_already_posted", fake_already_posted)
+    monkeypatch.setattr(scheduler.db, "log_announcement", fake_log)
+
+    fake_app = MagicMock()
+    fake_app.bot.send_message = AsyncMock()
+
+    await scheduler._send_to_active_chats(fake_app, "hi", "deadline", "gw_1")
+
+    sent_ids = [call.kwargs.get("chat_id") for call in fake_app.bot.send_message.call_args_list]
+    assert sent_ids == [-100]
+
+
+@pytest.mark.asyncio
+async def test_send_to_active_chats_sends_to_all_when_allowlist_empty(monkeypatch):
+    monkeypatch.setattr(scheduler.config, "allowed_telegram_chat_ids", lambda: set())
+    chats = [
+        {"chat_id": -100, "chat_type": "group", "title": "A"},
+        {"chat_id": -200, "chat_type": "group", "title": "B"},
+    ]
+
+    async def fake_get_chats():
+        return chats
+
+    async def fake_already_posted(chat_id, kind, trigger_key):
+        return False
+
+    async def fake_log(chat_id, kind, trigger_key, text):
+        return None
+
+    monkeypatch.setattr(scheduler.db, "get_telegram_chats", fake_get_chats)
+    monkeypatch.setattr(scheduler.db, "announcement_already_posted", fake_already_posted)
+    monkeypatch.setattr(scheduler.db, "log_announcement", fake_log)
+
+    fake_app = MagicMock()
+    fake_app.bot.send_message = AsyncMock()
+
+    await scheduler._send_to_active_chats(fake_app, "hi", "deadline", "gw_1")
+
+    sent_ids = [call.kwargs.get("chat_id") for call in fake_app.bot.send_message.call_args_list]
+    assert sent_ids == [-100, -200]
