@@ -5,10 +5,10 @@ from Utils.league import *
 import plyr_history as ph
 import pandas as pd
 from streamlit import session_state as session_state
-import Utils.gsheet_conn as gs
+import Utils.supabase_conn as db
 import altair as alt
 
-lg = league(282978)
+lg = league(581588)
 
 st.markdown('<h1 style="color:#33ff33;font-size:60px;background-image:linear-gradient(45deg, #1A512E, #63A91F);font-family:Montserrat;text-align:left;padding:20px;border-radius:10px;"'
             '>Manager Performance - Analysis</h1>', unsafe_allow_html=True)
@@ -18,8 +18,8 @@ plyrs = lg.get_league_players()
 plr_entry_link = [{p['Player']: p['Id']} for p in plyrs]
 plyr_lst = pd.DataFrame.from_records(plyrs).get('Player')
 
-# Get gameweek data from sheets
-gw_data = gs.data_load('Gameweek', ['Player', 'Points', 'Gameweek'])\
+# Get gameweek data from Supabase
+gw_data = db.load_gameweek()[['Player', 'Points', 'Gameweek']] \
     .astype({'Points': 'int64', 'Gameweek': 'int64'})
 
 gw_data['Players'] = [x.split(' ')[0].capitalize() + ' ' + x.split(' ')[1].capitalize() for x in gw_data['Player']]

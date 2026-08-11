@@ -1,10 +1,10 @@
 import pandas as pd
 import streamlit as st
-import Utils.gsheet_conn as gs
 import Utils.gameweek as gwk
 from Utils.league import *
 # from fpl_streamlit_app import deadline, latest_gw, completed_months
 import Utils.standings as stg
+import Utils.supabase_conn as db
 import urllib.parse
 
 global ovr_data, gw_data, mn_data
@@ -205,13 +205,14 @@ button:focus {
     # st.session_state['completed_months'] = st.session_state['completed_months']
 
 gw_winnings = mn_winnings = 0.0
-# Refresh data from Google Sheets
-ovr_data, gw_data, mn_data =  stg.data_refresh()
+# Refresh data from Supabase
+ovr_data, gw_data, mn_data = stg.data_refresh()
 
-# Calculate winnings data for Gameweek and Monthly
-gw_winning_df, mn_winnings_df = stg.winnings_data(gw_data, mn_data)
-gw_wins_agg = gw_winning_df.groupby('Player')['Total'].sum().reset_index()
-mn_wins_agg = mn_winnings_df.groupby('Player')['Total'].sum().reset_index()
+# Load persisted winnings summary from Supabase
+winnings_summary = db.load_winnings_summary()
+summary_for_player = winnings_summary.set_index('Player') if not winnings_summary.empty else pd.DataFrame(
+    columns=["gw_winnings", "monthly_winnings", "overall_prize", "Winnings"]
+)
 
     # ovr_data.loc[0, ['Rank']] = '🥇'
     # ovr_data.loc[1, ['Rank']] = '🥈'
@@ -550,8 +551,9 @@ with tab_ovr:
                 else:
                     playerSelected = ' '.join([p.capitalize() for p in parts])
 
-                gw_winnings = gw_winning_df.loc[gw_winning_df['Player'] == playerSelected, 'Total'].sum()
-                mn_winnings = mn_winnings_df.loc[mn_winnings_df['Player'] == playerSelected, 'Total'].sum()
+                if playerSelected in summary_for_player.index:
+                    gw_winnings = summary_for_player.loc[playerSelected, 'gw_winnings']
+                    mn_winnings = summary_for_player.loc[playerSelected, 'monthly_winnings']
 
                 # rank and delta
                 try:
@@ -637,35 +639,12 @@ with tab_mn:
         st.markdown(html, unsafe_allow_html=True)
 
 # Winnings Table section
-wins_agg_final = pd.merge(gw_wins_agg, mn_wins_agg, on='Player', how='outer', suffixes=('_GW', '_MN'))
-wins_agg_final['Winnings'] = wins_agg_final['Total_GW'].fillna(0) + wins_agg_final['Total_MN'].fillna(0)
-wins_agg_final = wins_agg_final[['Player', 'Winnings']].sort_values(by='Winnings', ascending=False).reset_index(drop=True)
-wins_agg_final['#'] = wins_agg_final.index + 1
-
-first_four = ovr_data['Player'].iloc[:4].astype(str).str.strip().tolist()
-prizes = [7200, 4500, 3100, 1500]
-prize_map = dict(zip(first_four, prizes))
-
-# Consider the overall winnings in calculation only during and after gameweek 38
-if st.session_state['gw_id'] == 38 and st.session_state['gw_status']:
-    # update existing winners
-    for player, prize in prize_map.items():
-        mask = wins_agg_final['Player'].astype(str).str.strip() == player
-        if mask.any():
-            wins_agg_final.loc[mask, 'Winnings'] = wins_agg_final.loc[mask, 'Winnings'] + prize
-
-    # re-sort and reset index after applying prizes
-    wins_agg_final = wins_agg_final.sort_values(by='Winnings', ascending=False).reset_index(drop=True)
-
 with tab_winnings:
     st.subheader('Total Winnings', anchor=False)
-    if len(wins_agg_final) == 0:
+    if winnings_summary.empty:
         st.write('No winnings data available yet.')
     else:
-        # st.dataframe(wins_agg_final, hide_index=True, column_order=['Player', 'Winnings'], height=780,
-        #             column_config={'Player': st.column_config.Column(width='medium'),
-        #                         'Winnings': st.column_config.Column(width='small')})
-        html = render_grid(wins_agg_final[['#', 'Player', 'Winnings']],
+        html = render_grid(winnings_summary[['#', 'Player', 'Winnings']],
                            column_order=['#', 'Player', 'Winnings'],
                            height=780)
         st.markdown(html, unsafe_allow_html=True)

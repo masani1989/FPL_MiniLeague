@@ -1,2 +1,11 @@
 .idea
 .streamlit/secrets.toml
+venv
+__pycache__/
+*.pyc
+.devcontainer/*
+.superpowers/
+.claude/
+docs/*
+scripts/*
+!scripts/run_backend.py
