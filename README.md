@@ -239,6 +239,26 @@ Attach the group to the web service.
 - Send `/start` to the bot in a private chat; it should reply.
 - Mention the bot in the group; it should reply.
 
+### Restricting announcements to one group
+
+Set `ALLOWED_TELEGRAM_CHAT_IDS` (env var or `[backend] allowed_telegram_chat_ids` in secrets.toml) to a comma-separated list of chat IDs that may receive scheduled announcements. Group chats have negative IDs.
+
+To find your group's chat ID:
+
+1. Add the bot to the group.
+2. Send a message in the group.
+3. Visit `https://api.telegram.org/bot<TOKEN>/getUpdates` and look for `"chat":{"id":-123456789,...}`.
+
+Leave empty to allow all chats (default).
+
+### Keep-alive (GitHub Actions)
+
+Render's free tier has no cron jobs, so keep-alive runs as a GitHub Actions scheduled workflow. `.github/workflows/keepalive.yml` pings the backend's `/health` endpoint every 10 minutes so the free-tier web service does not sleep.
+
+- The default health URL is `https://fpl-backend-v4fu.onrender.com/health`. To override it, set a repository variable `BACKEND_HEALTH_URL` (Settings → Secrets and variables → Actions → Variables).
+- **Scheduled workflows only run on the default branch (`main`).** Until `keepalive.yml` is merged to `main`, the schedule is dormant — test it with a manual `workflow_dispatch` run from the Actions tab.
+- GitHub Actions is free and unlimited for public repos.
+
 ### Notes
 
 - Render free tier sleeps after 15 minutes of inactivity. First request after sleep will be slow (~30–60s).

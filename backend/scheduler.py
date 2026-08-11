@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from backend import db
+from backend import config, db
 from backend.agent import OllamaAgent
 from backend.fpl_client import FPLClient
 from backend.gameweek import get_phases, get_recent_completed_gameweek
@@ -59,9 +59,12 @@ def stop_scheduler() -> None:
 async def _send_to_active_chats(telegram_app, text: str, kind: str, trigger_key: str) -> None:
     if telegram_app is None:
         return
+    allowed = config.allowed_telegram_chat_ids()
     chats = await db.get_telegram_chats()
     for chat in chats:
         chat_id = chat["chat_id"]
+        if allowed and chat_id not in allowed:
+            continue
         if await db.announcement_already_posted(chat_id, kind, trigger_key):
             continue
         try:
@@ -87,7 +90,7 @@ async def announce_upcoming_deadline(telegram_app) -> None:
         if not deadline:
             continue
         deadline_dt = _parse_deadline(deadline)
-        if deadline_dt > now_utc and (deadline_dt - now_utc).total_seconds() <= 86400:
+        if deadline_dt > now_utc and (deadline_dt - now_utc).total_seconds() <= 1034460:
             text = f"⏰ Gameweek {gw['id']} deadline is at {deadline_dt.strftime('%d %b %H:%M UTC')}!"
             await _send_to_active_chats(telegram_app, text, "deadline", f"gw_{gw['id']}")
             return

@@ -1,0 +1,15 @@
+name: Keep Render backend awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend /health
+        env:
+          HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+        run: curl -fsS "${HEALTH_URL:-https://fpl-backend-v4fu.onrender.com/health}"

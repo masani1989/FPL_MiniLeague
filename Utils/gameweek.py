@@ -112,9 +112,16 @@ def get_ongoing_month():
     :return:
     """
     gw = get_recent_completed_gameweek()
-    mn = get_till_latest_phase()
+    # mn = get_till_latest_phase()
+    mn1 = get_phases()
     
-    for k, v in mn.items():
+    # for k, v in mn.items():
+    #     if ((gw[0] == v[1] and not gw[1]) or gw[0] < v[1]):
+    #         return k
+    #     else:
+    #         return datetime.utcnow().strftime('%B')
+
+    for k, v in mn1.items():
         if ((gw[0] == v[1] and not gw[1]) or gw[0] < v[1]):
             return k
         else:
