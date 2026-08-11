@@ -2,8 +2,10 @@ name: Refresh FPL data in Supabase
 
 on:
   schedule:
-    # Run at 7 minutes past every hour. Avoids the :00 and :30 fleet spikes.
-    - cron: '7 * * * *'
+    # Run at 7 minutes past every 6 hours on weekends, mondays, and tuesdays.
+    # Run at 7 minutes past every 12 hours on wednesdays, thursdays, and fridays.
+    - cron: '7 */6 * * 6,0,1,2'
+    - cron: '7 */12 * * 3-5'
   workflow_dispatch:
 
 jobs:

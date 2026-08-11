@@ -9,3 +9,6 @@ __pycache__/
 docs/*
 scripts/*
 !scripts/run_backend.py
+.venv/*
+docs/*
+migrations/*
