@@ -55,3 +55,17 @@ PORT = _get_int(None, None, "PORT", 8000)
 
 FPL_LEAGUE_ID = _get_int("app", "fpl_league_id", "FPL_LEAGUE_ID", 581588)
 SEASON_ID = _get_secret_str("app", "season_id", "SEASON_ID", "2026-27")
+
+ALLOWED_TELEGRAM_CHAT_IDS_RAW = _get_secret_str(
+    "backend", "allowed_telegram_chat_ids", "ALLOWED_TELEGRAM_CHAT_IDS", ""
+)
+
+
+def allowed_telegram_chat_ids() -> set[int]:
+    """Return the set of allowed Telegram chat IDs; empty set means no restriction."""
+    raw = _get_secret_str(
+        "backend", "allowed_telegram_chat_ids", "ALLOWED_TELEGRAM_CHAT_IDS", ""
+    )
+    if not raw:
+        return set()
+    return {int(x.strip()) for x in raw.split(",") if x.strip()}
