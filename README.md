@@ -251,9 +251,13 @@ To find your group's chat ID:
 
 Leave empty to allow all chats (default).
 
-### Keep-alive cron
+### Keep-alive (GitHub Actions)
 
-The `render.yaml` Blueprint includes a `fpl-keepalive` cron service that pings `https://<your-service>.onrender.com/health` every 10 minutes so the free-tier web service does not sleep. Update the URL in `render.yaml` to match your service name before deploying.
+Render's free tier has no cron jobs, so keep-alive runs as a GitHub Actions scheduled workflow. `.github/workflows/keepalive.yml` pings the backend's `/health` endpoint every 10 minutes so the free-tier web service does not sleep.
+
+- The default health URL is `https://fpl-backend-v4fu.onrender.com/health`. To override it, set a repository variable `BACKEND_HEALTH_URL` (Settings → Secrets and variables → Actions → Variables).
+- **Scheduled workflows only run on the default branch (`main`).** Until `keepalive.yml` is merged to `main`, the schedule is dormant — test it with a manual `workflow_dispatch` run from the Actions tab.
+- GitHub Actions is free and unlimited for public repos.
 
 ### Notes
 
