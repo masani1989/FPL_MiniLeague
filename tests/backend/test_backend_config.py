@@ -48,19 +48,16 @@ def test_telegram_webhook_secret_reads_from_env(monkeypatch):
     assert _get_secret_str("backend", "telegram_webhook_secret", "TELEGRAM_WEBHOOK_SECRET", "") == "super-secret"
 
 
-from backend import config
-
-
 def test_allowed_telegram_chat_ids_empty_by_default(monkeypatch):
     monkeypatch.delenv("ALLOWED_TELEGRAM_CHAT_IDS", raising=False)
-    assert config.allowed_telegram_chat_ids() == set()
+    assert cfg.allowed_telegram_chat_ids() == set()
 
 
 def test_allowed_telegram_chat_ids_parses_csv(monkeypatch):
     monkeypatch.setenv("ALLOWED_TELEGRAM_CHAT_IDS", "-123456789,-987654321")
-    assert config.allowed_telegram_chat_ids() == {-123456789, -987654321}
+    assert cfg.allowed_telegram_chat_ids() == {-123456789, -987654321}
 
 
 def test_allowed_telegram_chat_ids_ignores_blank_entries(monkeypatch):
     monkeypatch.setenv("ALLOWED_TELEGRAM_CHAT_IDS", "-123, , -456")
-    assert config.allowed_telegram_chat_ids() == {-123, -456}
+    assert cfg.allowed_telegram_chat_ids() == {-123, -456}
