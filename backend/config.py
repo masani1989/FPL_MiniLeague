@@ -50,6 +50,7 @@ SUPABASE_KEY = _get_secret_str("supabase", "key", "SUPABASE_KEY", "")
 TELEGRAM_BOT_TOKEN = _get_secret_str("backend", "telegram_bot_token", "TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_URL = _get_secret_str("backend", "telegram_webhook_url", "TELEGRAM_WEBHOOK_URL", "")
 TELEGRAM_WEBHOOK_SECRET = _get_secret_str("backend", "telegram_webhook_secret", "TELEGRAM_WEBHOOK_SECRET", "")
+APP_HEALTH_TOKEN = _get_secret_str("backend", "app_health_token", "APP_HEALTH_TOKEN", "")
 
 PORT = _get_int(None, None, "PORT", 8000)
 

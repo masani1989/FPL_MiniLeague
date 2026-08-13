@@ -90,7 +90,7 @@ async def announce_upcoming_deadline(telegram_app) -> None:
         if not deadline:
             continue
         deadline_dt = _parse_deadline(deadline)
-        if deadline_dt > now_utc and (deadline_dt - now_utc).total_seconds() <= 1034460:
+        if deadline_dt > now_utc and (deadline_dt - now_utc).total_seconds() <= 86400:
             text = f"⏰ Gameweek {gw['id']} deadline is at {deadline_dt.strftime('%d %b %H:%M UTC')}!"
             await _send_to_active_chats(telegram_app, text, "deadline", f"gw_{gw['id']}")
             return
