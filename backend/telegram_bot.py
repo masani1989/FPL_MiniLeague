@@ -13,6 +13,44 @@ from telegram.ext import (
 from backend import db
 from backend.agent import OllamaAgent
 
+import io
+
+from PIL import Image, ImageDraw, ImageFont
+
+
+def _contains_table(text: str) -> bool:
+    return bool(re.search(r"\|.+\|", text, re.MULTILINE))
+
+
+def _render_table_image(text: str) -> io.BytesIO:
+    # Simple renderer: split by lines, parse |col1|col2|...|
+    lines = [line.strip() for line in text.splitlines() if "|" in line]
+    rows = [[cell.strip() for cell in line.split("|") if cell.strip() != ""] for line in lines]
+    
+    # Basic sizing
+    font = ImageFont.load_default()
+    cell_padding = 10
+    row_height = 30
+    col_widths = [max(font.getlength(str(row[i])) for row in rows) + cell_padding * 2 for i in range(len(rows[0]))]
+    img_width = sum(col_widths)
+    img_height = row_height * len(rows)
+
+    img = Image.new("RGB", (int(img_width) + 20, int(img_height) + 20), "white")
+    draw = ImageDraw.Draw(img)
+    y = 10
+    for row in rows:
+        x = 10
+        for i, cell in enumerate(row):
+            draw.rectangle([x, y, x + col_widths[i], y + row_height], outline="black")
+            draw.text((x + cell_padding, y + 8), str(cell), fill="black", font=font)
+            x += col_widths[i]
+        y += row_height
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
 
 def build_telegram_app(token: str) -> Application | None:
     if not token:
@@ -166,4 +204,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     clean_text = _strip_mention(text, username)
     agent = OllamaAgent()
     response = await agent.chat(clean_text)
-    await update.message.reply_text(response.reply[:4000])
+    # await update.message.reply_text(response.reply[:4000])
+    reply = response.reply[:4000]
+
+
+    if _contains_table(reply):
+        photo = _render_table_image(reply)
+        await update.message.reply_photo(photo=photo)
+    else:
+        await update.message.reply_text(reply)
