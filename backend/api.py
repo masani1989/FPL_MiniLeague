@@ -14,7 +14,14 @@ agent = OllamaAgent()
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health(request: Request) -> dict:
+    token = config.APP_HEALTH_TOKEN
+    if token:
+        header_value = request.headers.get("X-Health-Token")
+        query_value = request.query_params.get("token")
+        provided = header_value or query_value
+        if not provided or not hmac.compare_digest(token, provided):
+            raise HTTPException(status_code=401, detail="Unauthorized")
     return {"status": "ok"}
 
 
