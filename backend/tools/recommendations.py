@@ -6,6 +6,7 @@ from backend.fpl_client import FPLClient
 
 
 def _top_players_by_xg_xa(elements: list[dict], top_n: int = 10) -> list[dict]:
+    top_n = int(top_n) if top_n is not None else 10
     return sorted(
         elements,
         key=lambda p: float(p.get("expected_goals", 0) or 0) + float(p.get("expected_assists", 0) or 0),
@@ -156,6 +157,7 @@ async def get_player_info(player_name: str) -> dict:
     }    
 
 async def get_top_player_details(n: int = 10) -> dict:
+    n = int(n) if n is not None else 10
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
     elements = bootstrap.get("elements", [])
