@@ -125,3 +125,53 @@ async def project_finish_probability(player_name: str) -> dict:
         "points_behind_leader": gap,
         "top_4_probability": round(prob, 2),
     }
+
+async def get_player_info(player_name: str) -> dict:
+    client = FPLClient()
+    bootstrap = await client.get_bootstrap_static()
+    elements = bootstrap.get("elements", [])
+    player = next((p for p in elements if player_name.lower() in p.get("web_name", "").lower()), None)
+    team = next((t for t in bootstrap.get("teams", []) if t.get("id") == player.get("team")), None) if player else None
+    position_map = {1: "Goalkeeper", 2: "Defender", 3: "Midfielder", 4: "Forward"}
+
+    if player:
+        player["element_type"] = position_map.get(player.get("element_type"), "Unknown")
+    if team:
+        player["team_name"] = team.get("name")
+    if not player:
+        return {"error": f"Player '{player_name}' not found"}
+    return {
+        "player_name": player.get("web_name"),
+        # "team": player.get("team"),
+        "team_name": player.get("team_name"),
+        "position": player.get("element_type"),
+        "total_goals": player.get("goals_scored"),
+        "total_assists": player.get("assists"),
+        "clean_sheets": player.get("clean_sheets"),
+        "expected_goals": player.get("expected_goals"),
+        "expected_assists": player.get("expected_assists"),
+        "current_price": player.get("now_cost")/10,
+        "form": player.get("form"),
+        "ownership_percentage": player.get("selected_by_percent"),
+    }    
+
+async def get_top_player_details(n: int = 10) -> dict:
+    client = FPLClient()
+    bootstrap = await client.get_bootstrap_static()
+    elements = bootstrap.get("elements", [])
+    top_players_xg_xa = _top_players_by_xg_xa(elements, top_n=n)
+    top_players_position_wise_form = sorted(elements, key=lambda p: (p.get("element_type"), float(p.get("form", 0) or 0)), reverse=True)[:n]
+
+    detailed_info = []
+    detailed_info_form = []
+    for player in top_players_xg_xa:
+        player_info = await get_player_info(player.get("web_name"))
+        detailed_info.append(player_info)
+
+    for player in top_players_position_wise_form:
+        player_info = await get_player_info(player.get("web_name"))
+        detailed_info_form.append(player_info)
+    return {
+        "top_players_by_xg_xa": detailed_info,
+        "top_players_by_form": detailed_info_form
+    }
