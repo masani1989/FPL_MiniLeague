@@ -1,4 +1,6 @@
 """Async HTTP client for the Fantasy Premier League API."""
+import re
+
 import httpx
 
 FPL_BASE_URL = "https://fantasy.premierleague.com/api/"
@@ -7,6 +9,29 @@ FPL_LOGIN_URL = "https://users.premierleague.com/accounts/login/"
 
 def get_fpl_base_url() -> str:
     return FPL_BASE_URL
+
+
+def parse_cookie_string(cookie_string: str) -> dict[str, str]:
+    """Parse a browser cookie string into a dict for httpx.
+
+    Accepts either a single 'name=value' pair or multiple pairs separated by
+    ';'. Whitespace and surrounding quotes are stripped.
+    """
+    cookies: dict[str, str] = {}
+    if not cookie_string:
+        return cookies
+    # Remove surrounding quotes commonly pasted from browser dev tools.
+    cleaned = cookie_string.strip().strip('"').strip("'")
+    for pair in cleaned.split(";"):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        name, value = pair.split("=", 1)
+        name = name.strip()
+        value = value.strip().strip('"').strip("'")
+        if name:
+            cookies[name] = value
+    return cookies
 
 
 class FPLClient:
@@ -47,34 +72,35 @@ class FPLClient:
             response.raise_for_status()
             return response.json()
 
-    async def login(self, email: str, password: str) -> dict:
-        """Log in to FPL and return the cookie jar as a serializable dict.
-
-        Raises httpx.HTTPStatusError if credentials are invalid.
-        """
-        payload = {
-            "login": email,
-            "password": password,
-            "redirect_uri": "https://fantasy.premierleague.com/",
-            "app": "plfpl-web",
-        }
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "*/*",
-        }
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=False) as client:
-            response = await client.post(FPL_LOGIN_URL, data=payload, headers=headers)
-            # FPL returns a 302 redirect on success and 200 on failure.
-            if response.status_code in (301, 302, 303, 307, 308):
-                return {cookie.name: cookie.value for cookie in client.cookies.jar}
-            # Explicitly handle non-redirect as failure.
-            if response.status_code >= 400:
-                response.raise_for_status()
-            raise PermissionError("FPL login failed: invalid credentials or unexpected response")
-
     async def get_entry_picks(self, entry_id: int, event_id: int, cookies: dict | None = None) -> dict:
-        """Fetch picks for a specific gameweek. Requires auth cookies for current/future gameweeks."""
+        """Fetch picks for a finished gameweek. No auth required."""
         async with self._client(cookies=cookies) as client:
             response = await client.get(f"{self.base_url}entry/{entry_id}/event/{event_id}/picks/")
             response.raise_for_status()
             return response.json()
+
+    async def get_my_team(self, entry_id: int, cookies: dict | None = None) -> dict:
+        """Fetch the latest submitted team for the current/upcoming gameweek.
+
+        Requires a valid FPL session cookie from the browser. Returns a dict
+        with 'picks' and 'active_chip' so it can be consumed like
+        get_entry_picks.
+        """
+        if not cookies:
+            raise PermissionError("FPL session cookie is required to fetch the latest team.")
+        async with self._client(cookies=cookies) as client:
+            response = await client.get(f"{self.base_url}my-team/{entry_id}/")
+            response.raise_for_status()
+            data = response.json()
+        # my-team returns picks under a different shape; normalize it.
+        picks = data.get("picks", [])
+        return {
+            "picks": picks,
+            "active_chip": data.get("active_chip"),
+            "entry_history": data.get("entry_history", {}),
+        }
+
+    @staticmethod
+    def parse_session_cookie(cookie_string: str) -> dict[str, str]:
+        """Parse a pasted browser cookie string into a dict for httpx."""
+        return parse_cookie_string(cookie_string)

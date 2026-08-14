@@ -19,12 +19,12 @@ def test_encrypt_decrypt_text(set_credentials_key):
     assert crypto_utils.decrypt_text(cipher) == plain
 
 
-def test_encrypt_decrypt_dict(set_credentials_key):
-    data = {"session": "abc123", "expires": "2026-08-15T12:00:00Z"}
-    cipher = crypto_utils.encrypt_dict(data)
+def test_encrypt_decrypt_cookie_string(set_credentials_key):
+    cookie = "pl_profile=abc123; _ga=xyz"
+    cipher = crypto_utils.encrypt_text(cookie)
     assert isinstance(cipher, str)
-    decrypted = crypto_utils.decrypt_dict(cipher)
-    assert decrypted == data
+    decrypted = crypto_utils.decrypt_text(cipher)
+    assert decrypted == cookie
 
 
 def test_missing_key_raises(monkeypatch):

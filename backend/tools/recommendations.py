@@ -105,7 +105,7 @@ async def evaluate_team(player_name: str) -> dict:
     scorecard = await get_scorecard_for_manager(player_name)
     auth_prompt = ""
     if scorecard.get("auth_required"):
-        auth_prompt = " To see your latest submitted team, use /login <email> <password> in a private chat."
+        auth_prompt = " To see your latest submitted team, use /login <session_cookie> in a private chat, pasting your FPL browser session cookie."
 
     return {
         "player_name": manager["player_name"],

@@ -82,7 +82,7 @@ async def build_team_scorecard(entry_id: int, credentials: dict | None = None) -
     if cookies:
         target_gw = _upcoming_event_id(events)
         try:
-            picks_data = await client.get_entry_picks(entry_id, target_gw, cookies=cookies)
+            picks_data = await client.get_my_team(entry_id, cookies=cookies)
         except Exception as exc:  # noqa: BLE001
             return {
                 "error": f"Could not fetch latest team for gameweek {target_gw}: {exc}",
@@ -168,10 +168,11 @@ async def get_scorecard_for_manager(player_name: str) -> dict:
     if creds:
         from backend import crypto_utils
         try:
-            cookies = crypto_utils.decrypt_dict(creds["encrypted_cookies"]) if creds.get("encrypted_cookies") else {}
+            cookie_string = crypto_utils.decrypt_text(creds["encrypted_session_cookie"]) if creds.get("encrypted_session_cookie") else ""
+            cookies = FPLClient.parse_session_cookie(cookie_string) if cookie_string else {}
             credentials = {"cookies": cookies}
         except Exception as exc:  # noqa: BLE001
-            return {"error": f"Could not decrypt stored credentials: {exc}", "auth_required": True}
+            return {"error": f"Could not decrypt stored cookie: {exc}", "auth_required": True}
 
     scorecard = await build_team_scorecard(manager["fpl_entry_id"], credentials=credentials)
     scorecard["manager_name"] = manager["player_name"]

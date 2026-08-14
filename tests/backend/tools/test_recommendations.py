@@ -18,6 +18,7 @@ async def test_evaluate_team_includes_scorecard_and_auth_prompt_when_no_credenti
     assert result["player_name"] == "A B"
     assert result["avg_points_last_5"] == 60.0
     assert "auth_prompt" in result
+    assert "session_cookie" in result["auth_prompt"]
     assert "scorecard" in result
 
 

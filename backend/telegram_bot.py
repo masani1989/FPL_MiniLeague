@@ -1,4 +1,5 @@
 """Telegram bot handlers and wiring."""
+import io
 import re
 
 from telegram import Update
@@ -9,14 +10,11 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from PIL import Image, ImageDraw, ImageFont
 
-from backend import db
+from backend import crypto_utils, db
 from backend.agent import OllamaAgent
 from backend.fpl_client import FPLClient
-
-import io
-
-from PIL import Image, ImageDraw, ImageFont
 
 
 def _contains_table(text: str) -> bool:
@@ -146,7 +144,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/profile [player name] (defaults to you if registered)\n"
         "/winnings [player name] (defaults to you if registered)\n"
         "/register <fpl_entry_id>\n"
-        "/login <email> <password> (private chat only; enables latest team scorecard)\n"
+        "/login <session_cookie> (private chat only)\n\n"
+        "How to get your FPL session cookie:\n"
+        "1. Open a web browser and log in at https://fantasy.premierleague.com.\n"
+        "2. Right-click the page → Inspect → Application (or Storage) tab.\n"
+        "3. Find Cookies for fantasy.premierleague.com.\n"
+        "4. Copy the cookie named 'pl_profile' (or the whole 'cookie' request header).\n"
+        "5. In a private chat with me, send: /login pl_profile=your_value_here\n\n"
+        "Cookies expire, so run /login again if your latest team stops working.\n"
         "You can also ask me natural-language questions like 'Who should I captain?'"
     )
 
@@ -178,19 +183,27 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     })
     await update.message.reply_text(
         f"Registered as {manager['player_name']}.\n"
-        "Use /login <email> <password> in a private chat to enable your latest team scorecard."
+        "Use /login <session_cookie> in a private chat to enable your latest team scorecard."
     )
 
 
 async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Store encrypted FPL credentials for fetching latest team picks."""
+    """Store encrypted FPL session cookie for fetching latest team picks."""
     chat = update.effective_chat
     if chat.type != "private":
         await update.message.reply_text("Please log in via a private chat with me.")
         return
-    args = context.args
-    if len(args) != 2:
-        await update.message.reply_text("Usage: /login <email> <password>")
+
+    # Re-assemble everything after the command; cookie values often contain '=' and spaces.
+    text = update.message.text or ""
+    parts = text.split(None, 1)
+    cookie_string = parts[1].strip() if len(parts) > 1 else ""
+    if not cookie_string:
+        await update.message.reply_text(
+            "Usage: /login <session_cookie>\n"
+            "Paste the value of your FPL session cookie from the browser after logging in at "
+            "https://fantasy.premierleague.com."
+        )
         return
 
     chat_record = await _upsert_chat(update)
@@ -199,30 +212,27 @@ async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("Please /register <fpl_entry_id> before logging in.")
         return
 
-    email, password = args[0], args[1]
     client = FPLClient()
-    try:
-        cookies = await client.login(email, password)
-    except Exception as exc:  # noqa: BLE001
-        await update.message.reply_text(f"FPL login failed: {exc}")
+    cookies = client.parse_session_cookie(cookie_string)
+    if not cookies:
+        await update.message.reply_text("Could not parse the cookie string. It should look like 'name=value' or 'name=value; name2=value2'.")
         return
 
-    from backend import crypto_utils
     try:
         await db.upsert_manager_credentials({
             "manager_id": manager_id,
-            "fpl_login": email,
-            "encrypted_password": crypto_utils.encrypt_text(password),
-            "encrypted_cookies": crypto_utils.encrypt_dict(cookies),
-            "cookies_updated_at": "now()",
+            "encrypted_session_cookie": crypto_utils.encrypt_text(cookie_string),
+            "cookie_updated_at": "now()",
             "is_active": True,
         })
     except Exception as exc:  # noqa: BLE001
-        await update.message.reply_text(f"Could not store credentials: {exc}")
+        await update.message.reply_text(f"Could not store cookie: {exc}")
         return
 
     await update.message.reply_text(
-        "FPL credentials stored securely. You can now use /profile or ask me to evaluate your latest team."
+        "FPL session cookie stored securely.\n"
+        "You can now use /profile or ask me to evaluate your latest team.\n"
+        "Note: cookies expire, so run /login again when the bot can no longer read your latest team."
     )
 
 

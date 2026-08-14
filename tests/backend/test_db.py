@@ -40,9 +40,9 @@ async def test_get_managers_returns_records(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_manager_credentials_returns_active_record(monkeypatch):
-    _mock_client(monkeypatch, [{"manager_id": 1, "fpl_login": "a@b.com", "is_active": True}])
+    _mock_client(monkeypatch, [{"manager_id": 1, "encrypted_session_cookie": "cipher", "is_active": True}])
     result = await db.get_manager_credentials(1)
-    assert result["fpl_login"] == "a@b.com"
+    assert result["encrypted_session_cookie"] == "cipher"
 
 
 @pytest.mark.asyncio
