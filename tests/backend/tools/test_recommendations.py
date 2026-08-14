@@ -5,6 +5,23 @@ from backend.tools.recommendations import get_player_info, recommend_captain, ev
 
 
 @pytest.mark.asyncio
+async def test_evaluate_team_includes_scorecard_and_auth_prompt_when_no_credentials():
+    with patch("backend.tools.recommendations.db.get_managers", new_callable=AsyncMock, return_value=[
+        {"id": 1, "fpl_entry_id": 777321, "player_name": "A B"}
+    ]), patch("backend.tools.recommendations.FPLClient.get_entry_history", new_callable=AsyncMock, return_value={
+        "current": [{"points": 50}, {"points": 60}, {"points": 55}, {"points": 70}, {"points": 65}]
+    }), patch("backend.tools.recommendations.get_scorecard_for_manager", new_callable=AsyncMock, return_value={
+        "auth_required": True,
+        "error": "No credentials",
+    }):
+        result = await evaluate_team("A")
+    assert result["player_name"] == "A B"
+    assert result["avg_points_last_5"] == 60.0
+    assert "auth_prompt" in result
+    assert "scorecard" in result
+
+
+@pytest.mark.asyncio
 async def test_recommend_captain_returns_player():
     client = MagicMock()
     client.get_bootstrap_static = AsyncMock(return_value={
@@ -25,10 +42,10 @@ async def test_recommend_captain_returns_player():
 @pytest.mark.asyncio
 async def test_evaluate_team_returns_form_summary():
     with patch("backend.tools.recommendations.db.get_managers", new_callable=AsyncMock, return_value=[
-        {"fpl_entry_id": 777321, "player_name": "A B"}
+        {"id": 1, "fpl_entry_id": 777321, "player_name": "A B"}
     ]), patch("backend.tools.recommendations.FPLClient.get_entry_history", new_callable=AsyncMock, return_value={
         "current": [{"points": 50}, {"points": 60}, {"points": 55}, {"points": 70}, {"points": 65}]
-    }):
+    }), patch("backend.tools.recommendations.db.get_manager_credentials", new_callable=AsyncMock, return_value=None), patch("backend.tools.recommendations.FPLClient.get_entry_picks", new_callable=AsyncMock, return_value={"picks": []}):
         result = await evaluate_team("A")
     assert result["player_name"] == "A B"
     assert result["avg_points_last_5"] == 60.0

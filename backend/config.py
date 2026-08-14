@@ -57,6 +57,52 @@ PORT = _get_int(None, None, "PORT", 8000)
 FPL_LEAGUE_ID = _get_int("app", "fpl_league_id", "FPL_LEAGUE_ID", 581588)
 SEASON_ID = _get_secret_str("app", "season_id", "SEASON_ID", "2026-27")
 
+FPL_CREDENTIALS_KEY = _get_secret_str("backend", "fpl_credentials_key", "FPL_CREDENTIALS_KEY", "")
+
+SCORECARD_WEIGHTS = {
+    "GKP": {
+        "expected_goals_conceded": -0.25,
+        "goals_conceded_per_90": -0.25,
+        "saves_per_90": 0.15,
+        "penalties_saved": 0.10,
+        "form": 0.15,
+        "ict_index": 0.10,
+        "selected_by_percent": 0.05,
+        "minutes": 0.05,
+    },
+    "DEF": {
+        "expected_goals_conceded": -0.25,
+        "goals_conceded_per_90": -0.20,
+        "expected_goal_involvements": 0.15,
+        "threat": 0.10,
+        "creativity": 0.10,
+        "form": 0.10,
+        "ict_index": 0.05,
+        "selected_by_percent": 0.05,
+    },
+    "MID": {
+        "expected_goals": 0.20,
+        "expected_assists": 0.15,
+        "expected_goal_involvements": 0.15,
+        "threat": 0.10,
+        "creativity": 0.10,
+        "form": 0.15,
+        "ict_index": 0.10,
+        "selected_by_percent": 0.05,
+    },
+    "FWD": {
+        "expected_goals": 0.25,
+        "expected_assists": 0.10,
+        "expected_goal_involvements": 0.15,
+        "threat": 0.15,
+        "form": 0.15,
+        "ict_index": 0.10,
+        "selected_by_percent": 0.05,
+        "minutes": 0.05,
+    },
+}
+
+
 def allowed_telegram_chat_ids() -> set[int]:
     """Return the set of allowed Telegram chat IDs; empty set means no restriction.
 

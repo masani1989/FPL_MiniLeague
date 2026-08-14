@@ -215,3 +215,23 @@ async def announcement_already_posted(chat_id: int, kind: str, trigger_key: str)
         .execute()
     )
     return bool(_to_records(response))
+
+
+async def get_manager_credentials(manager_id: int) -> dict | None:
+    client = await get_client()
+    response = await client.table("manager_credentials").select("*").eq("manager_id", manager_id).eq("is_active", True).limit(1).execute()
+    records = _to_records(response)
+    return records[0] if records else None
+
+
+async def upsert_manager_credentials(record: dict) -> None:
+    client = await get_client()
+    await client.table("manager_credentials").upsert(
+        [record],
+        on_conflict="manager_id",
+    ).execute()
+
+
+async def delete_manager_credentials(manager_id: int) -> None:
+    client = await get_client()
+    await client.table("manager_credentials").delete().eq("manager_id", manager_id).execute()

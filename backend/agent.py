@@ -18,6 +18,7 @@ Rules:
 - For group chats, keep replies short. For private chats, you may be more detailed.
 - If the user's chat is registered to a manager, interpret ambiguous references like "my team", "me", "I", or "my" as referring to that manager.
 - Do not reveal private details of other managers to a registered user unless explicitly asked.
+- When the evaluate_team tool returns an auth_prompt, tell the user to run '/login <email> <password>' in a private chat with the bot so you can fetch their latest submitted team.
 """
 
 

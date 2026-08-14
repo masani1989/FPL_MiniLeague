@@ -12,6 +12,7 @@ from telegram.ext import (
 
 from backend import db
 from backend.agent import OllamaAgent
+from backend.fpl_client import FPLClient
 
 import io
 
@@ -76,6 +77,7 @@ def build_telegram_app(token: str) -> Application | None:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("register", register_command))
+    app.add_handler(CommandHandler("login", login_command))
     app.add_handler(CommandHandler("standings", standings_command))
     app.add_handler(CommandHandler("winnings", winnings_command))
     app.add_handler(CommandHandler("profile", profile_command))
@@ -144,6 +146,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/profile [player name] (defaults to you if registered)\n"
         "/winnings [player name] (defaults to you if registered)\n"
         "/register <fpl_entry_id>\n"
+        "/login <email> <password> (private chat only; enables latest team scorecard)\n"
         "You can also ask me natural-language questions like 'Who should I captain?'"
     )
 
@@ -173,7 +176,54 @@ async def register_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "manager_id": manager["id"],
         "fpl_entry_id": fpl_entry_id,
     })
-    await update.message.reply_text(f"Registered as {manager['player_name']}.")
+    await update.message.reply_text(
+        f"Registered as {manager['player_name']}.\n"
+        "Use /login <email> <password> in a private chat to enable your latest team scorecard."
+    )
+
+
+async def login_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Store encrypted FPL credentials for fetching latest team picks."""
+    chat = update.effective_chat
+    if chat.type != "private":
+        await update.message.reply_text("Please log in via a private chat with me.")
+        return
+    args = context.args
+    if len(args) != 2:
+        await update.message.reply_text("Usage: /login <email> <password>")
+        return
+
+    chat_record = await _upsert_chat(update)
+    manager_id = chat_record.get("manager_id")
+    if not manager_id:
+        await update.message.reply_text("Please /register <fpl_entry_id> before logging in.")
+        return
+
+    email, password = args[0], args[1]
+    client = FPLClient()
+    try:
+        cookies = await client.login(email, password)
+    except Exception as exc:  # noqa: BLE001
+        await update.message.reply_text(f"FPL login failed: {exc}")
+        return
+
+    from backend import crypto_utils
+    try:
+        await db.upsert_manager_credentials({
+            "manager_id": manager_id,
+            "fpl_login": email,
+            "encrypted_password": crypto_utils.encrypt_text(password),
+            "encrypted_cookies": crypto_utils.encrypt_dict(cookies),
+            "cookies_updated_at": "now()",
+            "is_active": True,
+        })
+    except Exception as exc:  # noqa: BLE001
+        await update.message.reply_text(f"Could not store credentials: {exc}")
+        return
+
+    await update.message.reply_text(
+        "FPL credentials stored securely. You can now use /profile or ask me to evaluate your latest team."
+    )
 
 
 async def standings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

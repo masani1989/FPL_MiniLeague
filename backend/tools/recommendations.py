@@ -3,6 +3,7 @@ import statistics
 
 from backend import db
 from backend.fpl_client import FPLClient
+from backend.tools.scorecard import get_scorecard_for_manager
 
 
 def _top_players_by_xg_xa(elements: list[dict], top_n: int = 10) -> list[dict]:
@@ -94,17 +95,26 @@ async def evaluate_team(player_name: str) -> dict:
     manager = next((m for m in managers if player_name.lower() in m.get("player_name", "").lower()), None)
     if not manager:
         return {"error": f"Manager '{player_name}' not found"}
+
     client = FPLClient()
     history = await client.get_entry_history(manager["fpl_entry_id"])
     current = history.get("current", [])
     points_last_5 = [gw.get("points", 0) for gw in current[-5:]]
     avg = statistics.mean(points_last_5) if points_last_5 else 0
+
+    scorecard = await get_scorecard_for_manager(player_name)
+    auth_prompt = ""
+    if scorecard.get("auth_required"):
+        auth_prompt = " To see your latest submitted team, use /login <email> <password> in a private chat."
+
     return {
         "player_name": manager["player_name"],
         "avg_points_last_5": round(avg, 2),
         "total_points": sum(points_last_5),
         "gameweeks_count": len(points_last_5),
         "verdict": "Strong form" if avg >= 55 else "Average form" if avg >= 40 else "Needs improvement",
+        "auth_prompt": auth_prompt,
+        "scorecard": scorecard,
     }
 
 
