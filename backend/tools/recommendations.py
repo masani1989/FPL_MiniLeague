@@ -156,7 +156,7 @@ async def get_player_info(player_name: str) -> dict:
         "ownership_percentage": player.get("selected_by_percent"),
     }    
 
-async def get_top_player_details(n: int = 10) -> dict:
+async def get_top_player_details(n: int = 10, position: str = None) -> dict:
     n = int(n) if n is not None else 10
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
@@ -173,7 +173,20 @@ async def get_top_player_details(n: int = 10) -> dict:
     for player in top_players_position_wise_form:
         player_info = await get_player_info(player.get("web_name"))
         detailed_info_form.append(player_info)
-    return {
-        "top_players_by_xg_xa": detailed_info,
-        "top_players_by_form": detailed_info_form
-    }
+
+    if position:
+        detailed_info_form = [p for p in detailed_info_form if p.get("position") == position]
+
+        return {
+            "top_players_by_form": detailed_info_form
+        }
+
+    else:
+        return {
+            "top_players_by_xg_xa": detailed_info
+        }
+
+    # return {
+    #     "top_players_by_xg_xa": detailed_info,
+    #     "top_players_by_form": detailed_info_form
+    # }

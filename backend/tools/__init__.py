@@ -79,7 +79,7 @@ _TOOLS_RAW = [
     {
         "name": "get_top_player_details",
         "description": "Return details for the top N players in the league by position, form, expected goals/assists, and ownership percentage. N is an integer. Always call this for top player requests. This in turn should call the get_player_info tool for each of the top N players to get their detailed statistics.",
-        "parameters": {"n": "integer"}
+        "parameters": {"n": "integer", "position": "optional string"},
     }
 ]
 
