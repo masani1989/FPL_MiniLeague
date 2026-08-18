@@ -66,6 +66,11 @@ _TOOLS_RAW = [
         "description": "Estimate probability of finishing top-4 based on current points and form.",
         "parameters": {"player_name": "string"},
     },
+    {
+        "name": "get_manager_details",
+        "description": "Return a manager's FPL entry ID, team name and player name. Call this only when you need to provide list of managers with their details or details of any specific manager from the managers table in the database.",
+        "parameters": {"player_name": "optional string"},
+    }
 ]
 
 TOOLS = [_build_tool_schema(t) for t in _TOOLS_RAW]
@@ -78,6 +83,7 @@ NAME_TO_FUNCTION = {
     "recommend_captain": recommendations.recommend_captain,
     "evaluate_team": recommendations.evaluate_team,
     "project_finish_probability": recommendations.project_finish_probability,
+    "get_manager_details": mini_league.get_manager_details,
 }
 
 
