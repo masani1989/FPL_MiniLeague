@@ -16,6 +16,8 @@ Rules:
 - After you receive a tool result, answer in a friendly, concise way using the data.
 - Never make up numbers. If data is missing, say so.
 - For group chats, keep replies short. For private chats, you may be more detailed.
+- If the user's chat is registered to a manager, interpret ambiguous references like "my team", "me", "I", or "my" as referring to that manager.
+- Do not reveal private details of other managers to a registered user unless explicitly asked.
 """
 
 
