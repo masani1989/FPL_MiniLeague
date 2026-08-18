@@ -60,3 +60,15 @@ async def compare_managers(player_a: str, player_b: str) -> dict:
         "points_diff": a["points"] - b["points"],
         "rank_diff": b["rank"] - a["rank"],
     }
+
+async def get_manager_details(player_name: str | None = None) -> dict:
+    managers = await db.get_managers()
+    if player_name:
+        manager = next((m for m in managers if player_name.lower() in m.get("player_name", "").lower()), None)
+        if not manager:
+            return {"error": f"Manager '{player_name}' not found"}
+        return {
+            "player_name": manager["player_name"],
+            "team_name": manager.get("team_name", "")
+        }
+    return {"managers": managers}

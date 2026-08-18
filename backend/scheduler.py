@@ -1,5 +1,5 @@
 """Scheduled announcements for the Telegram bot."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -90,9 +90,17 @@ async def announce_upcoming_deadline(telegram_app) -> None:
         if not deadline:
             continue
         deadline_dt = _parse_deadline(deadline)
-        if deadline_dt > now_utc and (deadline_dt - now_utc).total_seconds() <= 86400:
-            text = f"⏰ Gameweek {gw['id']} deadline is at {deadline_dt.strftime('%d %b %H:%M UTC')}!"
-            await _send_to_active_chats(telegram_app, text, "deadline", f"gw_{gw['id']}")
+        # if deadline_dt > now_utc and (deadline_dt - now_utc).total_seconds() <= 1034460:
+        #     text = f"⏰ Gameweek {gw['id']} deadline is at {deadline_dt.strftime('%d %b %H:%M UTC')}!"
+        #     await _send_to_active_chats(telegram_app, text, "deadline", f"gw_{gw['id']}")
+        #     return
+
+        # Only announce the next upcoming deadline, and only within 2 days of it.
+        if deadline_dt > now_utc:
+            seconds_until = (deadline_dt - now_utc).total_seconds()
+            if 0 < seconds_until <= 172800:
+                text = f"⏰ Gameweek {gw['id']} deadline is at {(deadline_dt + timedelta(minutes=330)).strftime('%d %b %H:%M')}!"
+                await _send_to_active_chats(telegram_app, text, "deadline", f"gw_{gw['id']}")
             return
 
 

@@ -72,6 +72,11 @@ _TOOLS_RAW = [
         "parameters": {"player_name": "string"},
     },
     {
+        "name": "get_manager_details",
+        "description": "Return a manager's FPL entry ID, team name and player name. Call this only when you need to provide list of managers with their details or details of any specific manager from the managers table in the database.",
+        "parameters": {"player_name": "optional string"},
+    },
+    {
         "name": "get_top_player_details",
         "description": "Return details for the top N players in the league by position, form, expected goals/assists, and ownership percentage. N is an integer. Always call this for top player requests. This in turn should call the get_player_info tool for each of the top N players to get their detailed statistics.",
         "parameters": {"n": "integer"}
@@ -88,6 +93,7 @@ NAME_TO_FUNCTION = {
     "recommend_captain": recommendations.recommend_captain,
     "evaluate_team": recommendations.evaluate_team,
     "project_finish_probability": recommendations.project_finish_probability,
+    "get_manager_details": mini_league.get_manager_details,
     "get_player_info": recommendations.get_player_info,
     "get_top_player_details": recommendations.get_top_player_details,
 }
