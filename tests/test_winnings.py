@@ -22,11 +22,11 @@ def test_compute_gw_winnings_splits_pot_on_ties():
     assert list(df.columns) == ["PlayerId", "Player", "Gameweek", "Rank", "Count", "Pot", "Winnings"]
     assert len(df) == 4
     gw1_winner = df[(df["Gameweek"] == 1) & (df["PlayerId"] == 1)].iloc[0]
-    assert gw1_winner["Winnings"] == 300.0
+    assert gw1_winner["Winnings"] == 375.0
     gw2_winner_a = df[(df["Gameweek"] == 2) & (df["PlayerId"] == 1)].iloc[0]
     gw2_winner_b = df[(df["Gameweek"] == 2) & (df["PlayerId"] == 2)].iloc[0]
-    assert gw2_winner_a["Winnings"] == 150.0
-    assert gw2_winner_b["Winnings"] == 150.0
+    assert gw2_winner_a["Winnings"] == 187.5
+    assert gw2_winner_b["Winnings"] == 187.5
 
 
 def test_compute_gw_winnings_only_includes_finished_gameweeks():
@@ -60,9 +60,9 @@ def test_compute_monthly_winnings_splits_pot_on_ties(monkeypatch):
 
     assert list(df.columns) == ["PlayerId", "Player", "Month", "Rank", "Count", "Pot", "Winnings"]
     assert len(df) == 2
-    assert df["Winnings"].iloc[0] == 265.0
-    assert df["Winnings"].iloc[1] == 265.0
-    assert df["Pot"].iloc[0] == 530
+    assert df["Winnings"].iloc[0] == 300.0
+    assert df["Winnings"].iloc[1] == 300.0
+    assert df["Pot"].iloc[0] == 600
 
 
 def test_compute_monthly_winnings_empty_for_incomplete_month(monkeypatch):
@@ -107,11 +107,57 @@ def test_compute_overall_prizes_awarded_after_gw38():
     assert list(df.columns) == ["PlayerId", "Player", "final_rank", "prize_amount"]
     assert len(df) == 4
     assert df.set_index("final_rank")["prize_amount"].to_dict() == {
-        1: 7200,
-        2: 4500,
-        3: 3100,
+        1: 8000,
+        2: 5000,
+        3: 3500,
         4: 1500,
     }
+
+
+def test_compute_overall_prizes_handles_tied_first_place():
+    overall_results = pd.DataFrame({
+        "PlayerId": [1, 2, 3, 4, 5],
+        "Player": ["A", "B", "C", "D", "E"],
+        "Rank": [1, 1, 3, 4, 5],
+        "Points": [100, 100, 80, 70, 60],
+        "Last_Rank": [2, 1, 4, 3, 5],
+    })
+
+    df = winnings.compute_overall_prizes(overall_results, [38, True])
+
+    assert list(df.columns) == ["PlayerId", "Player", "final_rank", "prize_amount"]
+    assert len(df) == 4
+    summary = df.set_index("PlayerId")["prize_amount"].to_dict()
+    # 1st and 2nd prize pots (8000 + 5000) split between two tied 1st-place players
+    assert summary[1] == 6500
+    assert summary[2] == 6500
+    # Next distinct rank is 3rd, so it receives the 3rd prize
+    assert summary[3] == 3500
+    assert summary[4] == 1500
+
+
+def test_compute_overall_prizes_handles_tied_second_place():
+    overall_results = pd.DataFrame({
+        "PlayerId": list(range(1, 9)),
+        "Player": [chr(ord("A") + i) for i in range(8)],
+        "Rank": [1, 2, 2, 2, 2, 2, 7, 8],
+        "Points": list(range(100, 20, -10)),
+        "Last_Rank": list(range(1, 9)),
+    })
+
+    df = winnings.compute_overall_prizes(overall_results, [38, True])
+
+    assert list(df.columns) == ["PlayerId", "Player", "final_rank", "prize_amount"]
+    # Five players tied for 2nd consume prize slots 2,3,4; only 1st prize + three tied slots are awarded
+    assert len(df) == 6
+    summary = df.set_index("PlayerId")["prize_amount"].to_dict()
+    assert summary[1] == 8000
+    # 2nd, 3rd and 4th prize pots (5000 + 3500 + 1500) split among five tied 2nd-place players
+    for pid in [2, 3, 4, 5, 6]:
+        assert summary[pid] == 2000
+    # Ranks 7 and 8 fall outside the four prize slots and receive nothing
+    assert 7 not in summary
+    assert 8 not in summary
 
 
 def test_compute_winnings_summary_totals():

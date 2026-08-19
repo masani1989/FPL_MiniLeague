@@ -156,37 +156,68 @@ async def get_player_info(player_name: str) -> dict:
         "ownership_percentage": player.get("selected_by_percent"),
     }    
 
-async def get_top_player_details(n: int = 10, position: str = None) -> dict:
+def _player_detail(player: dict, teams: list[dict]) -> dict:
+    position_map = {1: "Goalkeeper", 2: "Defender", 3: "Midfielder", 4: "Forward"}
+    team = next((t for t in teams if t.get("id") == player.get("team")), {})
+    return {
+        "player_name": player.get("web_name"),
+        "team_name": team.get("name"),
+        "position": position_map.get(player.get("element_type"), "Unknown"),
+        "total_goals": player.get("goals_scored"),
+        "total_assists": player.get("assists"),
+        "clean_sheets": player.get("clean_sheets"),
+        "expected_goals": player.get("expected_goals"),
+        "expected_assists": player.get("expected_assists"),
+        "current_price": (player.get("now_cost") or 0) / 10,
+        "form": player.get("form"),
+        "ownership_percentage": player.get("selected_by_percent"),
+    }
+
+
+def _position_id_from_input(position: str | None) -> int | None:
+    if position is None:
+        return None
+    position_map = {
+        "goalkeeper": 1,
+        "defender": 2,
+        "midfielder": 3,
+        "forward": 4,
+        "gk": 1,
+        "gkp": 1,
+        "def": 2,
+        "mid": 3,
+        "fwd": 4,
+    }
+    mapped = position_map.get(str(position).lower().strip())
+    if mapped is not None:
+        return mapped
+    try:
+        return int(position)
+    except (ValueError, TypeError):
+        return None
+
+
+async def get_top_player_details(n: int = 10, position: str | None = None) -> dict:
     n = int(n) if n is not None else 10
+    position_id = _position_id_from_input(position)
+
     client = FPLClient()
     bootstrap = await client.get_bootstrap_static()
     elements = bootstrap.get("elements", [])
-    top_players_xg_xa = _top_players_by_xg_xa(elements, top_n=n)
-    top_players_position_wise_form = sorted(elements, key=lambda p: (p.get("element_type"), float(p.get("form", 0) or 0)), reverse=True)[:n]
+    teams = bootstrap.get("teams", [])
 
-    detailed_info = []
-    detailed_info_form = []
-    for player in top_players_xg_xa:
-        player_info = await get_player_info(player.get("web_name"))
-        detailed_info.append(player_info)
+    pool = elements
+    if position_id is not None:
+        pool = [p for p in elements if p.get("element_type") == position_id]
 
-    for player in top_players_position_wise_form:
-        player_info = await get_player_info(player.get("web_name"))
-        detailed_info_form.append(player_info)
+    top_players_xg_xa = _top_players_by_xg_xa(pool, top_n=n)
+    top_players_form = sorted(
+        pool,
+        key=lambda p: float(p.get("form", 0) or 0),
+        reverse=True,
+    )[:n]
 
-    if position:
-        detailed_info_form = [p for p in detailed_info_form if p.get("position") == position]
-
-        return {
-            "top_players_by_form": detailed_info_form
-        }
-
-    else:
-        return {
-            "top_players_by_xg_xa": detailed_info
-        }
-
-    # return {
-    #     "top_players_by_xg_xa": detailed_info,
-    #     "top_players_by_form": detailed_info_form
-    # }
+    return {
+        "top_players_by_xg_xa": [_player_detail(p, teams) for p in top_players_xg_xa],
+        "top_players_by_form": [_player_detail(p, teams) for p in top_players_form],
+    }
