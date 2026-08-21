@@ -10,6 +10,7 @@ import pandas as pd
 import argparse
 import asyncio
 from last_man_standing.runner import run_lms_for_gw
+from continental_conquest.runner import run_league_gw, run_knockout_gw, finalize_groups
 
 
 lg = league(config.FPL_LEAGUE_ID)
@@ -74,6 +75,10 @@ def refGw(gw=None):
         refMnth(currGw[0], manager_id_map, gameweek_id_map)
         refOverall(manager_id_map)
         refLms(currGw[0])
+        try:
+            refCc(currGw[0])
+        except Exception:
+            pass   # CC failure must not break the existing refresh or skip the success log
         db.log_data_refresh(
             gameweek_id=gameweek_id_map.get(currGw[0]),
             status="success",
@@ -177,16 +182,38 @@ def refLms(gw=None, season_id=config.SEASON_ID):
     return asyncio.run(run_lms_for_gw(gw, season_id=season_id))
 
 
+def refCc(gw=None, season_id=config.SEASON_ID):
+    """Run Continental Conquest for a gameweek (league or knockout).
+
+    Idempotent (upserts). Error-isolated: callers (refGw) MUST wrap this in
+    try/except so a CC failure never breaks the existing refresh or skips
+    the success log.
+    """
+    if gw is None:
+        recent = gwk.get_recent_completed_gameweek()
+        gw = recent[0]
+        if not recent[1]:
+            return None
+    if gw <= 31:
+        return asyncio.run(run_league_gw(gw, season_id=season_id))
+    if gw == 32:
+        asyncio.run(finalize_groups(season_id=season_id))
+    return asyncio.run(run_knockout_gw(gw, season_id=season_id))
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Refresh FPL data in Supabase')
     parser.add_argument('--gw', type=int, help='Specific gameweek to refresh', required=False)
     parser.add_argument('--all', action='store_true', help='Refresh latest gameweek and recompute winnings')
     parser.add_argument('--lms', action='store_true', help='Run only the Last Man Standing refresh for the latest (or --gw) gameweek')
+    parser.add_argument('--cc', action='store_true', help='Run only the Continental Conquest refresh for the latest (or --gw) gameweek')
     args = parser.parse_args()
 
     if args.lms:
         refLms(args.gw)
+    elif args.cc:
+        refCc(args.gw)
     elif args.gw:
         refGw(args.gw)
     else:

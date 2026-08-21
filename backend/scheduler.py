@@ -9,6 +9,7 @@ from backend.fpl_client import FPLClient
 from backend.gameweek import get_phases, get_recent_completed_gameweek
 from backend.tools.mini_league import get_standings
 from last_man_standing.runner import run_lms_for_gw
+from continental_conquest.runner import run_league_gw, run_knockout_gw, finalize_groups
 
 
 scheduler = AsyncIOScheduler()
@@ -55,6 +56,14 @@ def start_scheduler(telegram_app) -> None:
         minute="47",
         args=(telegram_app,),
         id="announce_lms_elimination",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        announce_cc_round,
+        "cron",
+        minute="7",
+        args=(telegram_app,),
+        id="announce_cc_round",
         replace_existing=True,
     )
     scheduler.start()
@@ -190,3 +199,30 @@ async def announce_lms_elimination(telegram_app) -> None:
     if summary.get("completed"):
         text += "\n🏆 We have a Last Man Standing winner!"
     await _send_to_active_chats(telegram_app, text, "lms_elimination", f"gw_{recent_gw}")
+
+
+async def announce_cc_round(telegram_app) -> None:
+    """Run Continental Conquest for the most-recent finished GW and post a short summary.
+
+    League (gw<=31) scores matches; knockout (gw>=32) scores legs and resolves ties
+    (finalizing the group phase at gw 32 first). Announces only when matches were
+    actually scored. Deduped on gw_{recent_gw}.
+    """
+    if telegram_app is None:
+        return
+    recent_gw, is_finished = await get_recent_completed_gameweek()
+    if not is_finished or not recent_gw:
+        return
+    if recent_gw <= 31:
+        summary = await run_league_gw(recent_gw)
+    else:
+        if recent_gw == 32:
+            await finalize_groups()
+        summary = await run_knockout_gw(recent_gw)
+    if summary.get("status") != "ok":
+        return
+    matches_played = summary.get("matches_scored", 0)
+    if not matches_played:
+        return
+    text = f"⚽ Continental Conquest — Gameweek {recent_gw}: {matches_played} match(es) played."
+    await _send_to_active_chats(telegram_app, text, "cc_round", f"gw_{recent_gw}")

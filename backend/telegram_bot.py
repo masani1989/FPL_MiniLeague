@@ -195,6 +195,7 @@ def build_telegram_app(token: str) -> Application | None:
     app.add_handler(CommandHandler("winnings", winnings_command))
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("lms", lms_command))
+    app.add_handler(CommandHandler("cc", cc_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     return app
 
@@ -260,6 +261,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/profile [player name] (defaults to you if registered)\n"
         "/winnings [player name] (defaults to you if registered)\n"
         "/lms [gameweek] (Last Man Standing standings or a gameweek's scorecard)\n"
+        "/cc [gameweek|group A|B] (Continental Conquest standings, bracket, fixtures)\n"
         "/register <fpl_entry_id>\n"
         "You can also ask me natural-language questions like 'Who should I captain?'"
     )
@@ -324,6 +326,24 @@ async def lms_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         query = f"Show Last Man Standing gameweek {args[0]} scorecard"
     else:
         query = "Show Last Man Standing standings"
+    agent = OllamaAgent()
+    response = await agent.chat(query, chat_id=str(chat_record["chat_id"]))
+    await _send_reply(update, response.reply[:4000])
+
+
+async def cc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Usage: /cc                -> Continental Conquest overall standings + bracket
+              /cc <gw>          -> that gameweek's CC fixtures/matches
+              /cc group A|B     -> group standings table"""
+    chat_record = await _upsert_chat(update)
+    args = context.args or []
+    if args and args[0] == "group":
+        group = args[1] if len(args) > 1 else ""
+        query = f"Show Continental Conquest group {group} standings"
+    elif args:
+        query = f"Show Continental Conquest gameweek {args[0]} fixtures"
+    else:
+        query = "Show Continental Conquest standings and bracket"
     agent = OllamaAgent()
     response = await agent.chat(query, chat_id=str(chat_record["chat_id"]))
     await _send_reply(update, response.reply[:4000])

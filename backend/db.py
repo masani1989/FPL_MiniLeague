@@ -394,3 +394,260 @@ async def get_lms_gw_scores(contest_id: int, gw: int) -> list[dict]:
         .execute()
     )
     return _to_records(response)
+
+
+# --- Continental Conquest helpers ------------------------------------------
+
+async def get_cc_contest(season_id: str = config.SEASON_ID, league_id: int | None = None) -> dict | None:
+    """Return the Continental Conquest contest row for the season+league, or None."""
+    client = await get_client()
+    league_id = league_id or _league_id()
+    response = (
+        await client.table("cc_contest")
+        .select("*")
+        .eq("season_id", season_id)
+        .eq("league_id", league_id)
+        .limit(1)
+        .execute()
+    )
+    records = _to_records(response)
+    return records[0] if records else None
+
+
+async def upsert_cc_contest(season_id: str, league_id: int, phase: str) -> dict:
+    """Insert or update a Continental Conquest contest row; return the persisted record."""
+    client = await get_client()
+    response = (
+        await client.table("cc_contest")
+        .upsert(
+            [{"season_id": season_id, "league_id": league_id, "status": "setup", "phase": phase}],
+            on_conflict="season_id,league_id",
+        )
+        .execute()
+    )
+    return _to_records(response)[0]
+
+
+async def upsert_cc_group(contest_id: int, name: str) -> dict:
+    """Insert or update a Continental Conquest group row; return the persisted record."""
+    client = await get_client()
+    response = (
+        await client.table("cc_groups")
+        .upsert(
+            [{"contest_id": contest_id, "name": name}],
+            on_conflict="contest_id,name",
+        )
+        .execute()
+    )
+    return _to_records(response)[0]
+
+
+async def upsert_cc_group_member(
+    contest_id: int,
+    group_id: int,
+    manager_id: int,
+    player_name: str,
+    team_name: str,
+    seed_rank: int,
+) -> None:
+    """Insert or update a Continental Conquest group member row."""
+    client = await get_client()
+    await client.table("cc_group_members").upsert(
+        [
+            {
+                "contest_id": contest_id,
+                "group_id": group_id,
+                "manager_id": manager_id,
+                "player_name": player_name,
+                "team_name": team_name,
+                "seed_rank": seed_rank,
+            }
+        ],
+        on_conflict="contest_id,manager_id",
+    ).execute()
+
+
+async def get_cc_group_members(contest_id: int, group_id: int | None = None) -> list[dict]:
+    """Return group members for a contest, optionally filtered to a single group."""
+    client = await get_client()
+    q = client.table("cc_group_members").select("*").eq("contest_id", contest_id)
+    if group_id is not None:
+        q = q.eq("group_id", group_id)
+    response = await q.execute()
+    return _to_records(response)
+
+
+async def get_cc_groups(contest_id: int) -> list[dict]:
+    """Return all groups for a Continental Conquest contest."""
+    client = await get_client()
+    response = (
+        await client.table("cc_groups")
+        .select("*")
+        .eq("contest_id", contest_id)
+        .execute()
+    )
+    return _to_records(response)
+
+
+async def upsert_cc_fixture(record: dict) -> None:
+    """Insert or update a Continental Conquest match (fixture) row."""
+    client = await get_client()
+    await client.table("cc_matches").upsert(
+        [record], on_conflict="contest_id,phase,gameweek,home_manager_id,away_manager_id"
+    ).execute()
+
+
+async def get_cc_matches_for_gw(contest_id: int, gw: int) -> list[dict]:
+    """All fixtures for a gameweek (played and unplayed) — enables historical re-scoring."""
+    client = await get_client()
+    response = (
+        await client.table("cc_matches")
+        .select("*")
+        .eq("contest_id", contest_id)
+        .eq("gameweek", gw)
+        .execute()
+    )
+    return _to_records(response)
+
+
+async def get_cc_league_results(contest_id: int, group_id: int) -> list[dict]:
+    """Return played league-phase matches for a group within a contest."""
+    client = await get_client()
+    response = (
+        await client.table("cc_matches")
+        .select("*")
+        .eq("contest_id", contest_id)
+        .eq("phase", "league")
+        .eq("group_id", group_id)
+        .eq("played", True)
+        .execute()
+    )
+    return _to_records(response)
+
+
+async def upsert_cc_standing(record: dict) -> None:
+    """Insert or update a Continental Conquest standings row."""
+    client = await get_client()
+    await client.table("cc_standings").upsert(
+        [record], on_conflict="contest_id,manager_id"
+    ).execute()
+
+
+async def get_cc_standings(contest_id: int, group_id: int) -> list[dict]:
+    """Return Continental Conquest standings rows for a contest and group."""
+    client = await get_client()
+    response = (
+        await client.table("cc_standings")
+        .select("*")
+        .eq("contest_id", contest_id)
+        .eq("group_id", group_id)
+        .execute()
+    )
+    return _to_records(response)
+
+
+async def get_cc_ties_for_round(contest_id: int, competition: str, round_name: str) -> list[dict]:
+    """Return all ties for a contest/competition/round."""
+    client = await get_client()
+    response = (
+        await client.table("cc_ties")
+        .select("*")
+        .eq("contest_id", contest_id)
+        .eq("competition", competition)
+        .eq("round", round_name)
+        .execute()
+    )
+    return _to_records(response)
+
+
+async def get_cc_tie(tie_id: int) -> dict | None:
+    """Return a single Continental Conquest tie row by id, or None."""
+    client = await get_client()
+    response = (
+        await client.table("cc_ties")
+        .select("*")
+        .eq("id", tie_id)
+        .limit(1)
+        .execute()
+    )
+    records = _to_records(response)
+    return records[0] if records else None
+
+
+async def get_cc_tie_legs(contest_id: int, tie_id: int) -> list[dict]:
+    """Return the cc_matches leg rows for a knockout tie, ordered by leg."""
+    client = await get_client()
+    response = (await client.table("cc_matches").select("*")
+                .eq("contest_id", contest_id).eq("tie_id", tie_id)
+                .order("leg").execute())
+    return _to_records(response)
+
+
+async def upsert_cc_tie(record: dict) -> dict | None:
+    """Insert or update a Continental Conquest tie row; return the persisted record (or None)."""
+    client = await get_client()
+    response = await client.table("cc_ties").upsert(
+        [record], on_conflict="contest_id,competition,round,tie_index"
+    ).execute()
+    records = _to_records(response)
+    return records[0] if records else None
+
+
+async def complete_cc_contest(contest_id: int, winner_id: int, runner_up_id: int | None) -> None:
+    """Mark a Continental Conquest contest completed with winner and runner-up."""
+    client = await get_client()
+    await client.table("cc_contest").update(
+        {"status": "completed", "winner_manager_id": winner_id, "runner_up_manager_id": runner_up_id}
+    ).eq("id", contest_id).execute()
+
+
+async def freeze_schedule(contest_id: int) -> None:
+    """Lock the fixture set so it can no longer be regenerated (post GW1 deadline)."""
+    client = await get_client()
+    await client.table("cc_contest").update({"schedule_frozen": True}).eq("id", contest_id).execute()
+
+
+async def get_cc_schedule_frozen(contest_id: int) -> bool:
+    client = await get_client()
+    response = (
+        await client.table("cc_contest")
+        .select("schedule_frozen")
+        .eq("id", contest_id)
+        .limit(1)
+        .execute()
+    )
+    records = _to_records(response)
+    return bool(records[0]["schedule_frozen"]) if records else False
+
+
+async def get_manager_rank_history(manager_ids: list[int], current_season_id: str = config.SEASON_ID) -> dict[int, list[float]]:
+    """Return {manager_id: [rank, ...]} for up to the 3 most recent seasons BEFORE current_season_id.
+
+    Queries overall_standings ordered by season_id DESC, then in Python excludes the
+    current season and keeps up to 3 most recent prior-season ranks per manager.
+    Managers with no prior history get an empty list (seeded last by the caller).
+    """
+    client = await get_client()
+    response = (
+        await client.table("overall_standings")
+        .select("manager_id,rank,season_id")
+        .in_("manager_id", list(manager_ids))
+        .order("season_id", desc=True)
+        .execute()
+    )
+    rows = _to_records(response)
+    history: dict[int, list[float]] = {mid: [] for mid in manager_ids}
+    for r in rows:
+        mid = r["manager_id"]
+        if r["season_id"] == current_season_id:
+            continue
+        history.setdefault(mid, []).append(float(r["rank"]))
+    return {mid: ranks[:3] for mid, ranks in history.items()}
+
+
+async def complete_league_phase(contest_id: int) -> None:
+    """Advance the contest out of the league phase into knockouts."""
+    client = await get_client()
+    await client.table("cc_contest").update(
+        {"status": "knockouts", "phase": "ucl"}
+    ).eq("id", contest_id).execute()
