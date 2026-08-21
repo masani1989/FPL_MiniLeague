@@ -1,5 +1,5 @@
 """Tool registry for the FPL AI agent."""
-from backend.tools import mini_league, recommendations, last_man_standing
+from backend.tools import mini_league, recommendations, last_man_standing, continental_conquest
 
 
 def _build_tool_schema(tool: dict) -> dict:
@@ -90,6 +90,21 @@ _TOOLS_RAW = [
         "name": "get_lms_gameweek",
         "description": "Return Last Man Standing per-manager scorecards for a gameweek (First XI points, tiebreakers, who was eliminated).",
         "parameters": {"gw": "integer"},
+    },
+    {
+        "name": "get_cc_standings",
+        "description": "Return Continental Conquest group standings with wins/draws/losses, points and qualification (ucl/uel/eliminated). Call for any Continental Conquest group or standings question.",
+        "parameters": {},
+    },
+    {
+        "name": "get_cc_bracket",
+        "description": "Return the Continental Conquest knockout bracket (UCL and UEL) — ties grouped by round with winners and tiebreak notes.",
+        "parameters": {},
+    },
+    {
+        "name": "get_cc_fixtures",
+        "description": "Return Continental Conquest fixtures and scores for a gameweek (league matchdays and knockout legs).",
+        "parameters": {"gw": "integer"},
     }
 ]
 
@@ -108,6 +123,9 @@ NAME_TO_FUNCTION = {
     "get_top_player_details": recommendations.get_top_player_details,
     "get_lms_standings": last_man_standing.get_lms_standings,
     "get_lms_gameweek": last_man_standing.get_lms_gameweek,
+    "get_cc_standings": continental_conquest.get_cc_standings,
+    "get_cc_bracket": continental_conquest.get_cc_bracket,
+    "get_cc_fixtures": continental_conquest.get_cc_fixtures,
 }
 
 
