@@ -39,7 +39,6 @@ async def ensure_contest(
             manager["id"],
             manager["player_name"],
             manager["team_name"],
-            is_alive=True,
         )
     return contest
 

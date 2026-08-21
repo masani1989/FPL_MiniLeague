@@ -264,9 +264,14 @@ async def upsert_lms_standing(
     manager_id: int,
     player_name: str,
     team_name: str,
-    is_alive: bool = True,
 ) -> None:
-    """Insert or update an LMS standings row for a manager."""
+    """Seed/refresh an LMS standings row for a manager without touching alive status.
+
+    The `is_alive` column has a DB default of `true`, so INSERT gets `true`.
+    On conflict-update, `is_alive` is NOT in the upsert payload, so an
+    eliminated manager's `is_alive=false` is preserved — alive status is owned
+    by `mark_lms_eliminated`.
+    """
     client = await get_client()
     await client.table("lms_standings").upsert(
         [
@@ -275,7 +280,6 @@ async def upsert_lms_standing(
                 "manager_id": manager_id,
                 "player_name": player_name,
                 "team_name": team_name,
-                "is_alive": is_alive,
             }
         ],
         on_conflict="contest_id,manager_id",
@@ -357,14 +361,14 @@ async def complete_lms_contest(contest_id: int, winner_manager_id: int) -> None:
 
 
 async def get_lms_standings_rows(contest_id: int) -> list[dict]:
-    """Return LMS standings rows for display, alive first then by final_rank."""
+    """Return LMS standings rows for display, alive first then eliminated chronologically."""
     client = await get_client()
     response = (
         await client.table("lms_standings")
         .select("player_name,team_name,is_alive,eliminated_gw,final_rank")
         .eq("contest_id", contest_id)
         .order("is_alive", desc=True)
-        .order("final_rank")
+        .order("eliminated_gw", desc=False)
         .execute()
     )
     return _to_records(response)

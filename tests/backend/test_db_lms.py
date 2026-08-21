@@ -98,7 +98,7 @@ async def test_upsert_lms_standing(monkeypatch):
     client.table.return_value = chain
     _patch_get_client(monkeypatch, client)
 
-    await db.upsert_lms_standing(7, 42, "A B", "Team A", is_alive=True)
+    await db.upsert_lms_standing(7, 42, "A B", "Team A")
     client.table.assert_called_once_with("lms_standings")
     chain.upsert.assert_called_once_with(
         [
@@ -107,11 +107,19 @@ async def test_upsert_lms_standing(monkeypatch):
                 "manager_id": 42,
                 "player_name": "A B",
                 "team_name": "Team A",
-                "is_alive": True,
             }
         ],
         on_conflict="contest_id,manager_id",
     )
+    # C1 regression guard: is_alive must NOT be in the upsert payload so that
+    # on-conflict updates preserve the existing alive status (owned by
+    # mark_lms_eliminated). The column has a DB default of true for inserts.
+    record = chain.upsert.call_args.args[0][0]
+    assert "is_alive" not in record
+    assert record["contest_id"] == 7
+    assert record["manager_id"] == 42
+    assert record["player_name"] == "A B"
+    assert record["team_name"] == "Team A"
 
 
 @pytest.mark.asyncio
@@ -277,7 +285,9 @@ async def test_get_lms_standings_rows(monkeypatch):
     client.table.assert_called_once_with("lms_standings")
     chain.eq.assert_any_call("contest_id", 7)
     chain.order.assert_any_call("is_alive", desc=True)
-    chain.order.assert_any_call("final_rank")
+    # I1: eliminated block ordered by eliminated_gw ascending (chronological),
+    # not final_rank (which is never populated).
+    chain.order.assert_any_call("eliminated_gw", desc=False)
 
 
 @pytest.mark.asyncio

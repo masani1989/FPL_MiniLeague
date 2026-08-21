@@ -321,7 +321,7 @@ async def lms_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     chat_record = await _upsert_chat(update)
     args = context.args or []
     if args:
-        query = f"Show Last Man Standing standings for gameweek {args[0]}"
+        query = f"Show Last Man Standing gameweek {args[0]} scorecard"
     else:
         query = "Show Last Man Standing standings"
     agent = OllamaAgent()

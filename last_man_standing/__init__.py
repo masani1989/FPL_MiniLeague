@@ -1,6 +1,8 @@
-"""Last Man Standing — pure scoring core (no network or DB dependencies).
+"""Last Man Standing — scoring core plus an async I/O seam.
 
-Re-exports the public scoring and elimination API for convenience.
+The scoring, elimination, and standings modules are pure (no network or DB
+dependencies). `runner` is the async I/O seam that ties them to `backend.*`
+(FPLClient + Supabase) and is re-exported here for convenience.
 """
 
 from .elimination import determine_elimination

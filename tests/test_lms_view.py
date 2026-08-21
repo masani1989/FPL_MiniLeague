@@ -132,6 +132,46 @@ def test_load_lms_standings_no_contest_returns_empty_dataframe(monkeypatch):
     assert df.empty
 
 
+def test_load_lms_standings_orders_eliminated_by_eliminated_gw_asc(monkeypatch):
+    """I1: eliminated block ordered by eliminated_gw ascending (chronological),
+    not final_rank. Alive managers come first via is_alive desc."""
+    contest = [{"id": 7, "season_id": "2026-27", "league_id": 581588,
+                "status": "active", "started_gw": 1, "current_gw": 3}]
+
+    class _OrderCapturingChain(_LmsChain):
+        def __init__(self, data):
+            super().__init__(data)
+            self.order_calls = []
+
+        def order(self, *args, **kwargs):
+            self.order_calls.append((args, kwargs))
+            return self
+
+    standings_chain = _OrderCapturingChain([])
+
+    def table_side_effect(name):
+        if name == "lms_contest":
+            return _LmsChain(contest)
+        if name == "lms_standings":
+            return standings_chain
+        return _LmsChain([])
+
+    client = MagicMock()
+    client.table.side_effect = table_side_effect
+    monkeypatch.setattr(supabase_conn, "get_client", lambda: client)
+
+    supabase_conn.load_lms_standings("2026-27")
+
+    order_args = [c[0] for c in standings_chain.order_calls]
+    # First order: is_alive desc (alive first), second: eliminated_gw asc.
+    assert order_args[0] == ("is_alive",)
+    assert standings_chain.order_calls[0][1] == {"desc": True}
+    assert order_args[1] == ("eliminated_gw",)
+    assert standings_chain.order_calls[1][1] == {"desc": False}
+    # final_rank must NOT be used for ordering.
+    assert not any(c[0][0] == "final_rank" for c in standings_chain.order_calls)
+
+
 # ---------------------------------------------------------------------------
 # load_lms_gw_scores
 # ---------------------------------------------------------------------------

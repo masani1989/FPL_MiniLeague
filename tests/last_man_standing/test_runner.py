@@ -288,3 +288,159 @@ async def test_backfill_lms_calls_run_for_each_finished_gw(monkeypatch):
     called_gws = [c.args[0] for c in run_mock.await_args_list]
     assert called_gws == [1, 2]
     assert run_mock.await_count == 2
+
+
+# --- C1 stateful regression: contest narrows across gameweeks ----------------
+
+
+class _FakeDb:
+    """In-memory db that tracks is_alive across calls.
+
+    Mirrors the real backend.db contract for the helpers `run_lms_for_gw` uses,
+    but stores standings rows in a dict so eliminated managers STAY eliminated
+    (the C1 bug: `upsert_lms_standing` forced is_alive=True on every GW).
+    """
+
+    def __init__(self, contest, managers):
+        self.contest = contest
+        self.managers = managers  # list of {id, player_name, team_name, fpl_entry_id}
+        # standings keyed by manager_id
+        self.standings: dict[int, dict] = {}
+        self.elim_calls: list[tuple[int, int, int]] = []
+        self.gw_score_records: list[dict] = []
+        self.elimination_records: list[dict] = []
+        self.current_gw: int | None = None
+        self.completed: tuple[int, int] | None = None
+
+    async def upsert_lms_contest(self, *args, **kwargs):
+        return self.contest
+
+    async def get_lms_contest(self, *args, **kwargs):
+        return self.contest
+
+    async def get_managers(self, league_id=None):
+        return self.managers
+
+    async def upsert_lms_standing(self, contest_id, manager_id, player_name, team_name):
+        # C1 fix: do NOT force is_alive. Preserve existing; default True on insert.
+        if manager_id not in self.standings:
+            self.standings[manager_id] = {
+                "contest_id": contest_id,
+                "manager_id": manager_id,
+                "player_name": player_name,
+                "team_name": team_name,
+                "is_alive": True,
+                "eliminated_gw": None,
+            }
+        else:
+            row = self.standings[manager_id]
+            row["player_name"] = player_name
+            row["team_name"] = team_name
+            # is_alive preserved
+
+    async def get_lms_alive_managers(self, contest_id):
+        alive = [
+            r for r in self.standings.values() if r["is_alive"]
+        ]
+        return [
+            {
+                "manager_id": r["manager_id"],
+                "fpl_entry_id": next(
+                    m["fpl_entry_id"] for m in self.managers if m["id"] == r["manager_id"]
+                ),
+                "player_name": r["player_name"],
+                "team_name": r["team_name"],
+            }
+            for r in alive
+        ]
+
+    async def _resolve_gameweek_id(self, gw, season_id=None):
+        return 1000 + gw
+
+    async def upsert_lms_gw_score(self, record):
+        self.gw_score_records.append(record)
+
+    async def upsert_lms_elimination(self, record):
+        self.elimination_records.append(record)
+
+    async def mark_lms_eliminated(self, contest_id, manager_id, gw, final_rank=None):
+        self.elim_calls.append((contest_id, manager_id, gw))
+        self.standings[manager_id]["is_alive"] = False
+        self.standings[manager_id]["eliminated_gw"] = gw
+
+    async def complete_lms_contest(self, contest_id, winner_manager_id):
+        self.completed = (contest_id, winner_manager_id)
+
+    async def set_lms_current_gw(self, contest_id, gw):
+        self.current_gw = gw
+
+
+@pytest.mark.asyncio
+async def test_run_lms_for_gw_does_not_revive_eliminated_managers(monkeypatch):
+    """C1 stateful regression: eliminated managers stay eliminated across GWs.
+
+    Seeds 3 managers (A high, B mid, C low). GW1 eliminates C; GW2 eliminates B.
+    Asserts the contest narrows 3 -> 2 -> 1 and that C is eliminated exactly
+    once (not re-eliminated in GW2), proving `ensure_contest` no longer
+    resurrects eliminated managers.
+    """
+    contest = {"id": 42, "season_id": "2026-27", "league_id": 581588, "status": "active"}
+    managers = [
+        {"id": 1, "player_name": "Alice", "team_name": "A Team", "fpl_entry_id": 101},
+        {"id": 2, "player_name": "Bob", "team_name": "B Team", "fpl_entry_id": 102},
+        {"id": 3, "player_name": "Carol", "team_name": "C Team", "fpl_entry_id": 103},
+    ]
+    fake_db = _FakeDb(contest, managers)
+    monkeypatch.setattr(runner, "db", fake_db)
+
+    # FPLClient stub: GW1 and GW2 both finished; live/picks payloads are
+    # irrelevant because compute_manager_score is patched to deterministic scores.
+    mock_client = MagicMock()
+    mock_client.get_bootstrap_static = AsyncMock(
+        return_value={
+            "events": [
+                {"id": 1, "finished": True},
+                {"id": 2, "finished": True},
+            ]
+        }
+    )
+    mock_client.get_gw_live = AsyncMock(return_value={"elements": {}})
+    mock_client.get_entry_picks = AsyncMock(return_value={"picks": []})
+    monkeypatch.setattr(runner, "FPLClient", lambda: mock_client)
+
+    # Deterministic scores per manager: A=50, B=40, C=10. Lowest is eliminated.
+    def _compute(picks_payload, live_elements, manager_id, fpl_entry_id, player_name, team_name):
+        pts = {1: 50, 2: 40, 3: 10}[manager_id]
+        return _score(manager_id, fpl_entry_id, player_name, pts)
+
+    monkeypatch.setattr(runner, "compute_manager_score", _compute)
+
+    # Use the real determine_elimination so the lowest score is eliminated.
+    # (imported fresh to avoid patches from prior tests in this module)
+    from last_man_standing.elimination import determine_elimination as _real_det
+
+    monkeypatch.setattr(runner, "determine_elimination", _real_det)
+
+    # GW1: Carol (id=3, score 10) eliminated.
+    out1 = await runner.run_lms_for_gw(1)
+    assert out1["status"] == "ok"
+    assert out1["eliminated"]["manager_id"] == 3
+    alive_after_gw1 = await fake_db.get_lms_alive_managers(contest["id"])
+    assert sorted(m["manager_id"] for m in alive_after_gw1) == [1, 2]
+    # C is NOT revived by ensure_contest at the top of GW2.
+
+    # GW2: Bob (id=2, score 40) eliminated; Alice is the winner.
+    out2 = await runner.run_lms_for_gw(2)
+    assert out2["status"] == "ok"
+    assert out2["eliminated"]["manager_id"] == 2
+    assert out2["completed"] is True
+    alive_after_gw2 = await fake_db.get_lms_alive_managers(contest["id"])
+    assert [m["manager_id"] for m in alive_after_gw2] == [1]
+
+    # C1 core assertion: each manager eliminated exactly once (no revival).
+    elim_counts: dict[int, int] = {}
+    for _, mid, _gw in fake_db.elim_calls:
+        elim_counts[mid] = elim_counts.get(mid, 0) + 1
+    assert elim_counts == {3: 1, 2: 1}, (
+        f"expected C and B each eliminated once, got {elim_counts}"
+    )

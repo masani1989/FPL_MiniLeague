@@ -1,5 +1,5 @@
 """Last Man Standing contest tools backed by Supabase."""
-from backend import db, config
+from backend import db
 
 
 async def get_lms_standings() -> dict:

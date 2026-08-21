@@ -646,7 +646,8 @@ def load_lms_contest(season_id: str = config.SEASON_ID) -> dict | None:
 def load_lms_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
     """Load LMS standings in the shape the UI expects.
 
-    Alive managers are listed first (is_alive desc), then by final_rank asc.
+    Alive managers are listed first (is_alive desc), then eliminated managers
+    in chronological order (eliminated_gw asc — first eliminated first).
     """
     contest = load_lms_contest(season_id)
     if contest is None:
@@ -658,7 +659,7 @@ def load_lms_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
         .select("*")
         .eq("contest_id", contest["id"])
         .order("is_alive", desc=True)
-        .order("final_rank", desc=False)
+        .order("eliminated_gw", desc=False)
         .execute()
     )
     df = pd.DataFrame(response.data)

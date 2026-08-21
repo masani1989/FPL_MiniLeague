@@ -66,6 +66,9 @@ async def test_lms_command_with_gameweek_arg_queries_gameweek_5():
     mock_chat.assert_awaited_once()
     query_arg = mock_chat.call_args.args[0]
     assert "gameweek 5" in query_arg
+    # M3: per-gw query is a "scorecard", not "standings".
+    assert "scorecard" in query_arg.lower()
+    assert "standings" not in query_arg.lower()
 
 
 @pytest.mark.asyncio
