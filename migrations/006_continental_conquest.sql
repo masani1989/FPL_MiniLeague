@@ -41,7 +41,7 @@ create table if not exists cc_matches (
     gameweek int not null,                    -- FPL gw
     leg int,                                  -- 1|2 (null for league)
     group_id int references cc_groups(id),    -- set for league matches
-    tie_id int references cc_ties(id),        -- set for knockout legs
+    tie_id int,                               -- set for knockout legs
     home_manager_id int not null references managers(id),
     away_manager_id int not null references managers(id),
     home_score int,                           -- league: net gw score | knockout: first xi
@@ -81,6 +81,10 @@ create table if not exists cc_ties (
     unique (contest_id, competition, round, tie_index)
 );
 
+alter table cc_matches
+    add constraint cc_matches_tie_id_fkey
+    foreign key (tie_id) references cc_ties(id);
+    
 create table if not exists cc_standings (
     id serial primary key,
     contest_id int not null references cc_contest(id),
