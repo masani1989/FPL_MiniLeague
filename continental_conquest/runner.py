@@ -1,5 +1,6 @@
 """Async orchestrator for Continental Conquest. The ONLY async module here."""
 from __future__ import annotations
+import asyncio
 from backend import config, db
 from backend.fpl_client import FPLClient
 from . import scheduling, scoring, tiebreak, bracket, standings as standings_mod
@@ -307,3 +308,44 @@ async def _seed_round(contest_id, competition, round_name, pairings, leg_gws) ->
                 "round": round_name, "gameweek": gw, "leg": leg_no, "tie_id": tie["id"],
                 "home_manager_id": home, "away_manager_id": away, "played": False,
             })
+
+
+async def backfill_conquest(from_gw: int = 1, to_gw: int | None = None,
+                            season_id: str = config.SEASON_ID) -> list[dict]:
+    client = FPLClient()
+    bootstrap = await client.get_bootstrap_static()
+    events = bootstrap["events"]
+    if to_gw is None:
+        finished = [e["id"] for e in events if e["finished"]]
+        to_gw = max(finished) if finished else from_gw
+    finished_gws = sorted(e["id"] for e in events if e["finished"] and from_gw <= e["id"] <= to_gw)
+    results = []
+    for gw in finished_gws:
+        if gw <= 31:
+            r = await run_league_gw(gw, season_id=season_id, client=client)
+            results.append(r)
+            if gw == 31:
+                await finalize_groups(season_id=season_id)
+        else:
+            results.append(await run_knockout_gw(gw, season_id=season_id, client=client))
+    return results
+
+
+def main(argv: list[str] | None = None) -> list[dict] | None:
+    import argparse
+    p = argparse.ArgumentParser(description="Continental Conquest runner")
+    p.add_argument("--backfill", action="store_true")
+    p.add_argument("--generate-schedule", action="store_true")
+    p.add_argument("--from-gw", type=int, default=1)
+    p.add_argument("--to-gw", type=int, default=None)
+    args = p.parse_args(argv)
+    if args.generate_schedule:
+        return asyncio.run(generate_schedule())
+    if args.backfill:
+        return asyncio.run(backfill_conquest(from_gw=args.from_gw, to_gw=args.to_gw))
+    p.print_help()
+    return None
+
+
+if __name__ == "__main__":
+    main()
