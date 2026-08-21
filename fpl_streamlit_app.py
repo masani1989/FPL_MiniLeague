@@ -41,12 +41,17 @@ myspace = st.Page(
     title='My Space',
     icon=':material/groups:',
 )
+lms = st.Page(
+    'views/last_man_standing.py',
+    title='Last Man Standing',
+    icon=':material/shield:',
+)
 
 # --- NAVIGATION SETUP [WITH SECTIONS]---
 pg = st.navigation(
     {
         "Welcome": [about_page],
-        "Menu": [league, analytics, myspace],
+        "Menu": [league, analytics, myspace, lms],
     }
 )
 

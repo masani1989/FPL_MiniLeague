@@ -45,3 +45,15 @@ class FPLClient:
             response = await client.get(f"{self.base_url}leagues-classic/{league_id}/standings/")
             response.raise_for_status()
             return response.json()
+
+    async def get_entry_picks(self, entry_id: int, gw: int) -> dict:
+        async with self._client() as client:
+            response = await client.get(f"{self.base_url}entry/{entry_id}/event/{gw}/picks/")
+            response.raise_for_status()
+            return response.json()
+
+    async def get_gw_live(self, gw: int) -> dict:
+        async with self._client() as client:
+            response = await client.get(f"{self.base_url}event/{gw}/live/")
+            response.raise_for_status()
+            return response.json()
