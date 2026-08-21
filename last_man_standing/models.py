@@ -37,3 +37,22 @@ class ManagerScore:
     captain_multiplier: int  # the capped multiplier actually applied
     vice_captain_element: int | None
     tiebreak: TiebreakStats
+
+
+@dataclass(frozen=True)
+class EliminationResult:
+    """The result of eliminating one manager from a Last Man Standing contest.
+
+    `standings` is a best->worst snapshot (list of plain dicts) where each row
+    carries an `eliminated` flag that is True only for the eliminated manager.
+    """
+
+    eliminated_manager_id: int
+    eliminated_player_name: str
+    tiebreak_note: str
+    coin_toss_required: bool
+    coin_toss_winner: str | None  # 'win' | 'lose' | None
+    coin_toss_reason: str | None
+    alive_before: int
+    alive_after: int
+    standings: list[dict]
