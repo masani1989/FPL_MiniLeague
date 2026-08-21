@@ -330,7 +330,7 @@ async def backfill_conquest(from_gw: int = 1, to_gw: int | None = None,
             results.append(await run_knockout_gw(gw, season_id=season_id, client=client))
     return results
 
-
+# main
 def main(argv: list[str] | None = None) -> list[dict] | None:
     import argparse
     p = argparse.ArgumentParser(description="Continental Conquest runner")
