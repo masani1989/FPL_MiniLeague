@@ -50,6 +50,7 @@ def test_refGw_deletes_then_upserts_gameweek():
          patch("Utils.refreshData.db.upsert_gameweek") as mock_upsert, \
          patch("Utils.refreshData.refMnth") as mock_refMnth, \
          patch("Utils.refreshData.refOverall") as mock_refOverall, \
+         patch("Utils.refreshData.refLms") as mock_refLms, \
          patch("Utils.refreshData.db.log_data_refresh") as mock_log:
         rd.refGw()
 
