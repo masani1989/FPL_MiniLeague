@@ -40,3 +40,49 @@ async def test_generate_schedule_refuses_after_gw1_deadline():
         result = await runner.generate_schedule("2026-27", 581588,
                                                 bootstrap={"events": [{"id": 1, "deadline_time": "2000-01-01T00:00:00Z"}]})
     assert result["status"] == "skipped" and "deadline" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_run_league_gw_scores_and_persists_matches():
+    matches = [
+        {"id": 1, "contest_id": 1, "group_id": 10, "gameweek": 1,
+         "home_manager_id": 1, "away_manager_id": 2,
+         "phase": "league", "round": "M1", "played": False},
+    ]
+    # managers 1,2 both have fpl_entry_id 1001,1002
+    members = {1: {"manager_id": 1, "fpl_entry_id": 1001, "player_name": "A", "team_name": "T"},
+               2: {"manager_id": 2, "fpl_entry_id": 1002, "player_name": "B", "team_name": "T"}}
+
+    class FakeClient:
+        async def get_bootstrap_static(self):
+            return {"events": [{"id": 1, "finished": True}]}
+        async def get_gw_live(self, gw):
+            return {"elements": {}}
+        async def get_entry_picks(self, entry, gw):
+            # give home more points
+            pts = 60 if entry == 1001 else 40
+            return {"entry_history": {"points": pts, "event_transfers_cost": 0}, "picks": []}
+
+    with patch.object(runner.db, "get_cc_contest", new=AsyncMock(return_value={"id": 1, "status": "league"})), \
+         patch.object(runner.db, "get_cc_schedule_frozen", new=AsyncMock(return_value=False)), \
+         patch.object(runner.db, "get_cc_matches_for_gw", new=AsyncMock(return_value=matches)), \
+         patch.object(runner.db, "get_cc_group_members", new=AsyncMock(return_value=[
+             {"manager_id": 1, "fpl_entry_id": 1001, "player_name": "A", "team_name": "T"},
+             {"manager_id": 2, "fpl_entry_id": 1002, "player_name": "B", "team_name": "T"}])), \
+         patch.object(runner.db, "upsert_cc_fixture", new=AsyncMock()):
+        result = await runner.run_league_gw(1, client=FakeClient())
+        assert result["status"] == "ok"
+        call = runner.db.upsert_cc_fixture.call_args[0][0]
+        assert call["home_score"] == 60 and call["away_score"] == 40
+        assert call["result"] == "home"
+        assert call["played"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_league_gw_skips_unfinished():
+    class FakeClient:
+        async def get_bootstrap_static(self):
+            return {"events": [{"id": 1, "finished": False}]}
+    with patch.object(runner.db, "get_cc_contest", new=AsyncMock(return_value={"id": 1, "status": "league"})):
+        result = await runner.run_league_gw(1, client=FakeClient())
+    assert result["status"] == "skipped"

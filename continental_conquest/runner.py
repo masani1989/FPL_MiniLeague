@@ -5,6 +5,7 @@ from backend.fpl_client import FPLClient
 from . import scheduling, scoring, tiebreak, bracket, standings as standings_mod
 from .models import GroupMember, Fixture
 from .scheduling import seed_groups, build_league_fixtures
+from .scoring import league_score
 
 
 async def ensure_contest(season_id: str = config.SEASON_ID, league_id: int = config.FPL_LEAGUE_ID) -> dict:
@@ -86,3 +87,52 @@ async def freeze_schedule_if_past_deadline(contest_id: int, bootstrap: dict) -> 
     """Idempotent: freeze the schedule the first time we run past the GW1 deadline."""
     if not await db.get_cc_schedule_frozen(contest_id) and _gw1_deadline_passed(bootstrap):
         await db.freeze_schedule(contest_id)
+
+
+async def run_league_gw(gw: int, season_id: str = config.SEASON_ID,
+                        league_id: int = config.FPL_LEAGUE_ID, client: FPLClient | None = None) -> dict:
+    contest = await ensure_contest(season_id, league_id)
+    if contest.get("status") not in ("setup", "league"):
+        return {"status": "skipped", "reason": "not in league phase", "gw": gw}
+    client = client or FPLClient()
+    bootstrap = await client.get_bootstrap_static()
+    event = next((e for e in bootstrap["events"] if e["id"] == gw), None)
+    if event is None or not event["finished"]:
+        return {"status": "skipped", "reason": "gameweek not finished", "gw": gw}
+
+    # Freeze the fixture set the first time we pass the GW1 deadline (one-time).
+    await freeze_schedule_if_past_deadline(contest["id"], bootstrap)
+
+    matches = await db.get_cc_matches_for_gw(contest["id"], gw)
+    if not matches:
+        return {"status": "skipped", "reason": "no league matches for gw", "gw": gw}
+
+    members = {m["manager_id"]: m for m in await db.get_cc_group_members(contest["id"])}
+    live = await client.get_gw_live(gw)
+
+    scored = 0
+    for m in matches:
+        hm = members[m["home_manager_id"]]
+        am = members[m["away_manager_id"]]
+        hp = await client.get_entry_picks(hm["fpl_entry_id"], gw)
+        ap = await client.get_entry_picks(am["fpl_entry_id"], gw)
+        hs, as_ = league_score(hp), league_score(ap)
+        if hs > as_:
+            result = "home"
+        elif as_ > hs:
+            result = "away"
+        else:
+            result = "draw"
+        await db.upsert_cc_fixture({
+            "contest_id": contest["id"], "phase": "league", "competition": None,
+            "round": m["round"], "gameweek": gw, "leg": None,
+            "group_id": m["group_id"], "tie_id": None,
+            "home_manager_id": m["home_manager_id"], "away_manager_id": m["away_manager_id"],
+            "home_score": hs, "away_score": as_,
+            "home_gross": hs, "away_gross": as_,   # net league score (gw_score - transfer_cost)
+            "result": result, "active_chip_home": hp.get("active_chip"),
+            "active_chip_away": ap.get("active_chip"),
+            "played": True,
+        })
+        scored += 1
+    return {"status": "ok", "gw": gw, "matches_scored": scored}
