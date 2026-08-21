@@ -613,3 +613,106 @@ def upsert_winnings_summary(
     records = _prepare_records(mapped)
     client = get_client()
     client.table("winnings_summary").upsert(records, on_conflict="manager_id,season_id").execute()
+
+
+# ---------------------------------------------------------------------------
+# Last Man Standing — sync loaders for the Streamlit view
+# ---------------------------------------------------------------------------
+
+_LMS_STANDINGS_COLUMNS = ["Player", "Team", "Status", "Eliminated_GW", "Final_Rank"]
+_LMS_GW_SCORES_COLUMNS = [
+    "Player", "First XI", "Goals", "Conceded", "Clean Sheets",
+    "Assists", "Bench Pts", "Eliminated",
+]
+
+
+@st.cache_data(ttl=300)
+def load_lms_contest(season_id: str = config.SEASON_ID) -> dict | None:
+    """Return the LMS contest row for a season as a dict, or None if not set up."""
+    client = get_client()
+    response = (
+        client.table("lms_contest")
+        .select("*")
+        .eq("season_id", season_id)
+        .limit(1)
+        .execute()
+    )
+    if not response.data:
+        return None
+    return response.data[0]
+
+
+@st.cache_data(ttl=300)
+def load_lms_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load LMS standings in the shape the UI expects.
+
+    Alive managers are listed first (is_alive desc), then eliminated managers
+    in chronological order (eliminated_gw asc — first eliminated first).
+    """
+    contest = load_lms_contest(season_id)
+    if contest is None:
+        return pd.DataFrame(columns=_LMS_STANDINGS_COLUMNS)
+
+    client = get_client()
+    response = (
+        client.table("lms_standings")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .order("is_alive", desc=True)
+        .order("eliminated_gw", desc=False)
+        .execute()
+    )
+    df = pd.DataFrame(response.data)
+    if df.empty:
+        return pd.DataFrame(columns=_LMS_STANDINGS_COLUMNS)
+
+    df = df[["player_name", "team_name", "is_alive", "eliminated_gw", "final_rank"]].rename(
+        columns={
+            "player_name": "Player",
+            "team_name": "Team",
+            "is_alive": "Status",
+            "eliminated_gw": "Eliminated_GW",
+            "final_rank": "Final_Rank",
+        }
+    )
+    df["Status"] = df["Status"].map({True: "Alive", False: "Eliminated"})
+    return df[_LMS_STANDINGS_COLUMNS]
+
+
+@st.cache_data(ttl=300)
+def load_lms_gw_scores(season_id: str, gw: int) -> pd.DataFrame:
+    """Load LMS gameweek scorecard in the shape the UI expects, ordered by First XI desc."""
+    contest = load_lms_contest(season_id)
+    if contest is None:
+        return pd.DataFrame(columns=_LMS_GW_SCORES_COLUMNS)
+
+    client = get_client()
+    response = (
+        client.table("lms_gameweek_scores")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .eq("fpl_gameweek_id", gw)
+        .order("first_xi_points", desc=True)
+        .execute()
+    )
+    df = pd.DataFrame(response.data)
+    if df.empty:
+        return pd.DataFrame(columns=_LMS_GW_SCORES_COLUMNS)
+
+    df = df[
+        ["player_name", "first_xi_points", "goals_scored", "goals_conceded",
+         "clean_sheets", "assists", "bench_points", "is_eliminated"]
+    ].rename(
+        columns={
+            "player_name": "Player",
+            "first_xi_points": "First XI",
+            "goals_scored": "Goals",
+            "goals_conceded": "Conceded",
+            "clean_sheets": "Clean Sheets",
+            "assists": "Assists",
+            "bench_points": "Bench Pts",
+            "is_eliminated": "Eliminated",
+        }
+    )
+    df["Eliminated"] = df["Eliminated"].map({True: "Yes", False: "No"})
+    return df[_LMS_GW_SCORES_COLUMNS]

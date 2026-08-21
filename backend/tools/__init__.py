@@ -1,5 +1,5 @@
 """Tool registry for the FPL AI agent."""
-from backend.tools import mini_league, recommendations
+from backend.tools import mini_league, recommendations, last_man_standing
 
 
 def _build_tool_schema(tool: dict) -> dict:
@@ -80,6 +80,16 @@ _TOOLS_RAW = [
         "name": "get_top_player_details",
         "description": "Return details for the top N players in the league by position, form, expected goals/assists, and ownership percentage. N is an integer. Always call this for top player requests. This in turn should call the get_player_info tool for each of the top N players to get their detailed statistics.",
         "parameters": {"n": "integer", "position": "optional string"},
+    },
+    {
+        "name": "get_lms_standings",
+        "description": "Return Last Man Standing survivor standings and the most recent elimination. Call for any LMS / last man standing question.",
+        "parameters": {},
+    },
+    {
+        "name": "get_lms_gameweek",
+        "description": "Return Last Man Standing per-manager scorecards for a gameweek (First XI points, tiebreakers, who was eliminated).",
+        "parameters": {"gw": "integer"},
     }
 ]
 
@@ -96,6 +106,8 @@ NAME_TO_FUNCTION = {
     "get_manager_details": mini_league.get_manager_details,
     "get_player_info": recommendations.get_player_info,
     "get_top_player_details": recommendations.get_top_player_details,
+    "get_lms_standings": last_man_standing.get_lms_standings,
+    "get_lms_gameweek": last_man_standing.get_lms_gameweek,
 }
 
 

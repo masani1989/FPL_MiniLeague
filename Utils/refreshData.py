@@ -8,6 +8,8 @@ import Utils.supabase_conn as db
 from Utils import config
 import pandas as pd
 import argparse
+import asyncio
+from last_man_standing.runner import run_lms_for_gw
 
 
 lg = league(config.FPL_LEAGUE_ID)
@@ -71,6 +73,7 @@ def refGw(gw=None):
         db.upsert_gameweek(gw_df, manager_id_map, gameweek_id_map, config.SEASON_ID)
         refMnth(currGw[0], manager_id_map, gameweek_id_map)
         refOverall(manager_id_map)
+        refLms(currGw[0])
         db.log_data_refresh(
             gameweek_id=gameweek_id_map.get(currGw[0]),
             status="success",
@@ -159,14 +162,32 @@ def refOverall(manager_id_map=None):
     db.upsert_overall(standings_df, manager_id_map, config.SEASON_ID)
 
 
+def refLms(gw=None, season_id=config.SEASON_ID):
+    """Run the Last Man Standing elimination for a gameweek.
+
+    If `gw` is None, target the most recent completed gameweek and skip when
+    it is not yet finished. The runner is idempotent (upserts), so re-running
+    a finished gameweek is safe.
+    """
+    if gw is None:
+        recent = gwk.get_recent_completed_gameweek()
+        gw = recent[0]
+        if not recent[1]:
+            return None
+    return asyncio.run(run_lms_for_gw(gw, season_id=season_id))
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Refresh FPL data in Supabase')
     parser.add_argument('--gw', type=int, help='Specific gameweek to refresh', required=False)
     parser.add_argument('--all', action='store_true', help='Refresh latest gameweek and recompute winnings')
+    parser.add_argument('--lms', action='store_true', help='Run only the Last Man Standing refresh for the latest (or --gw) gameweek')
     args = parser.parse_args()
 
-    if args.gw:
+    if args.lms:
+        refLms(args.gw)
+    elif args.gw:
         refGw(args.gw)
     else:
         refresh_all()
