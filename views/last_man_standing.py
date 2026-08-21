@@ -4,6 +4,7 @@ import streamlit as st
 import Utils.gameweek as gwk
 import Utils.supabase_conn as db
 from Utils import config
+from last_man_standing.constants import SKIP_GWS
 
 # ---------------------------------------------------------------------------
 # Styling — mirror views/minileague.py for a consistent look across pages.
@@ -132,16 +133,23 @@ with tab_gw:
             "Select Gameweek",
             options=finished_gws,
             index=finished_gws.index(default_gw),
+            format_func=lambda gw: f"GW {gw} (bye)" if gw in SKIP_GWS else f"GW {gw}",
             label_visibility="collapsed",
         )
 
-        scores = db.load_lms_gw_scores(season_id, selected_gw)
-        if scores.empty:
-            st.write(f"No scorecard data available for Gameweek {selected_gw}.")
+        if selected_gw in SKIP_GWS:
+            st.info(
+                f"Gameweek {selected_gw} is a bye in the Last Man Standing contest "
+                f"— no eliminations."
+            )
         else:
-            st.dataframe(scores, use_container_width=True, hide_index=True)
-            eliminated = scores.loc[scores["Eliminated"] == "Yes", "Player"].tolist()
-            if eliminated:
-                st.error(f"Eliminated this gameweek: {', '.join(eliminated)}")
+            scores = db.load_lms_gw_scores(season_id, selected_gw)
+            if scores.empty:
+                st.write(f"No scorecard data available for Gameweek {selected_gw}.")
             else:
-                st.caption("No eliminations this gameweek — everyone survived.")
+                st.dataframe(scores, use_container_width=True, hide_index=True)
+                eliminated = scores.loc[scores["Eliminated"] == "Yes", "Player"].tolist()
+                if eliminated:
+                    st.error(f"Eliminated this gameweek: {', '.join(eliminated)}")
+                else:
+                    st.caption("No eliminations this gameweek — everyone survived.")

@@ -192,6 +192,32 @@ async def test_run_lms_for_gw_skips_when_gameweek_not_in_db(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_lms_for_gw_skips_excluded_gw(monkeypatch):
+    """Bye weeks (SKIP_GWS) return early — no DB writes, no ensure_contest."""
+    mock_db = _patch_db(monkeypatch)
+    # A bye GW (2 is in SKIP_GWS). The skip check fires before ensure_contest,
+    # so the client is never built/called either.
+    mock_client = MagicMock()
+    mock_client.get_bootstrap_static = AsyncMock(
+        return_value={"events": [{"id": 2, "finished": True}]}
+    )
+    monkeypatch.setattr(runner, "FPLClient", lambda: mock_client)
+
+    out = await runner.run_lms_for_gw(2)
+
+    assert out["status"] == "skipped"
+    assert "bye" in out["reason"]
+    assert out["gw"] == 2
+    mock_db.upsert_lms_contest.assert_not_awaited()
+    mock_db.upsert_lms_gw_score.assert_not_awaited()
+    mock_db.mark_lms_eliminated.assert_not_awaited()
+    mock_db.upsert_lms_elimination.assert_not_awaited()
+    mock_db.set_lms_current_gw.assert_not_awaited()
+    mock_db.complete_lms_contest.assert_not_awaited()
+    mock_client.get_bootstrap_static.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_run_lms_for_gw_completes_when_one_remains(monkeypatch):
     mock_db = _patch_db(monkeypatch)
     sole = [_manager(7, 707, "Zoe")]
@@ -199,13 +225,13 @@ async def test_run_lms_for_gw_completes_when_one_remains(monkeypatch):
 
     mock_client = MagicMock()
     mock_client.get_bootstrap_static = AsyncMock(
-        return_value={"events": [{"id": 9, "finished": True}]}
+        return_value={"events": [{"id": 10, "finished": True}]}
     )
     mock_client.get_gw_live = AsyncMock(return_value={"elements": {}})
     mock_client.get_entry_picks = AsyncMock(return_value={"picks": []})
     monkeypatch.setattr(runner, "FPLClient", lambda: mock_client)
 
-    out = await runner.run_lms_for_gw(9)
+    out = await runner.run_lms_for_gw(10)
 
     assert out["status"] == "completed"
     assert out["completed"] is True
@@ -267,12 +293,13 @@ async def test_run_lms_for_gw_is_idempotent(monkeypatch):
 async def test_backfill_lms_calls_run_for_each_finished_gw(monkeypatch):
     mock_db = _patch_db(monkeypatch)
     mock_client = MagicMock()
+    # GWs 4, 5 are scored; 6 is a bye (in SKIP_GWS) and must be filtered out.
     mock_client.get_bootstrap_static = AsyncMock(
         return_value={
             "events": [
-                {"id": 1, "finished": True},
-                {"id": 2, "finished": True},
-                {"id": 3, "finished": True},
+                {"id": 4, "finished": True},
+                {"id": 5, "finished": True},
+                {"id": 6, "finished": True},
             ]
         }
     )
@@ -282,11 +309,11 @@ async def test_backfill_lms_calls_run_for_each_finished_gw(monkeypatch):
     run_mock = AsyncMock(return_value=sentinel)
     monkeypatch.setattr(runner, "run_lms_for_gw", run_mock)
 
-    results = await runner.backfill_lms(from_gw=1, to_gw=2)
+    results = await runner.backfill_lms(from_gw=4, to_gw=6)
 
     assert results == [sentinel, sentinel]
     called_gws = [c.args[0] for c in run_mock.await_args_list]
-    assert called_gws == [1, 2]
+    assert called_gws == [4, 5]
     assert run_mock.await_count == 2
 
 
@@ -379,10 +406,10 @@ class _FakeDb:
 async def test_run_lms_for_gw_does_not_revive_eliminated_managers(monkeypatch):
     """C1 stateful regression: eliminated managers stay eliminated across GWs.
 
-    Seeds 3 managers (A high, B mid, C low). GW1 eliminates C; GW2 eliminates B.
-    Asserts the contest narrows 3 -> 2 -> 1 and that C is eliminated exactly
-    once (not re-eliminated in GW2), proving `ensure_contest` no longer
-    resurrects eliminated managers.
+    Seeds 3 managers (A high, B mid, C low). GW1 eliminates C; GW4 eliminates B
+    (GW2/GW3 are byes, so GW4 is the next scored week). Asserts the contest
+    narrows 3 -> 2 -> 1 and that C is eliminated exactly once (not re-eliminated
+    in GW4), proving `ensure_contest` no longer resurrects eliminated managers.
     """
     contest = {"id": 42, "season_id": "2026-27", "league_id": 581588, "status": "active"}
     managers = [
@@ -393,14 +420,15 @@ async def test_run_lms_for_gw_does_not_revive_eliminated_managers(monkeypatch):
     fake_db = _FakeDb(contest, managers)
     monkeypatch.setattr(runner, "db", fake_db)
 
-    # FPLClient stub: GW1 and GW2 both finished; live/picks payloads are
-    # irrelevant because compute_manager_score is patched to deterministic scores.
+    # FPLClient stub: GW1 and GW4 both finished (GW2/GW3 are byes, avoided);
+    # live/picks payloads are irrelevant because compute_manager_score is
+    # patched to deterministic scores.
     mock_client = MagicMock()
     mock_client.get_bootstrap_static = AsyncMock(
         return_value={
             "events": [
                 {"id": 1, "finished": True},
-                {"id": 2, "finished": True},
+                {"id": 4, "finished": True},
             ]
         }
     )
@@ -427,10 +455,10 @@ async def test_run_lms_for_gw_does_not_revive_eliminated_managers(monkeypatch):
     assert out1["eliminated"]["manager_id"] == 3
     alive_after_gw1 = await fake_db.get_lms_alive_managers(contest["id"])
     assert sorted(m["manager_id"] for m in alive_after_gw1) == [1, 2]
-    # C is NOT revived by ensure_contest at the top of GW2.
+    # C is NOT revived by ensure_contest at the top of GW4.
 
-    # GW2: Bob (id=2, score 40) eliminated; Alice is the winner.
-    out2 = await runner.run_lms_for_gw(2)
+    # GW4: Bob (id=2, score 40) eliminated; Alice is the winner.
+    out2 = await runner.run_lms_for_gw(4)
     assert out2["status"] == "ok"
     assert out2["eliminated"]["manager_id"] == 2
     assert out2["completed"] is True

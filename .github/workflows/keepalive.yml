@@ -2,7 +2,7 @@ name: Keep Render backend awake
 
 on:
   schedule:
-    - cron: '7 */6 * * *'
+    - cron: '7 */23 * * *'
   workflow_dispatch:
 
 jobs:
