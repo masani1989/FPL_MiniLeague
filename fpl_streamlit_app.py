@@ -46,12 +46,17 @@ lms = st.Page(
     title='Last Man Standing',
     icon=':material/shield:',
 )
+cc = st.Page(
+    'views/continental_conquest.py',
+    title='Continental Conquest',
+    icon=':material/trophy:',
+)
 
 # --- NAVIGATION SETUP [WITH SECTIONS]---
 pg = st.navigation(
     {
         "Welcome": [about_page],
-        "Menu": [league, analytics, myspace, lms],
+        "Menu": [league, analytics, myspace, lms, cc],
     }
 )
 

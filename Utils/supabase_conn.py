@@ -625,6 +625,13 @@ _LMS_GW_SCORES_COLUMNS = [
     "Assists", "Bench Pts", "Eliminated",
 ]
 
+_CC_STANDINGS_COLUMNS = [
+    "Group", "Player", "Team", "P", "W", "D", "L", "Pts", "GF", "GA", "GD", "Qualification",
+]
+_CC_FIXTURE_COLUMNS = ["Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
+_CC_TIE_COLUMNS = ["Competition", "Round", "Home", "Away", "Winner", "Resolved", "Note"]
+_CC_GROUP_COLUMNS = ["Group", "Player", "Team", "Seed Rank"]
+
 
 @st.cache_data(ttl=300)
 def load_lms_contest(season_id: str = config.SEASON_ID) -> dict | None:
@@ -716,3 +723,176 @@ def load_lms_gw_scores(season_id: str, gw: int) -> pd.DataFrame:
     )
     df["Eliminated"] = df["Eliminated"].map({True: "Yes", False: "No"})
     return df[_LMS_GW_SCORES_COLUMNS]
+
+
+# ---------------------------------------------------------------------------
+# Continental Conquest loaders (sync, UI-shaped) — mirror the LMS loaders.
+# ---------------------------------------------------------------------------
+
+def load_cc_contest(season_id: str = config.SEASON_ID) -> dict | None:
+    """Return the CC contest row for a season as a dict, or None if not set up."""
+    client = get_client()
+    response = (
+        client.table("cc_contest")
+        .select("*")
+        .eq("season_id", season_id)
+        .limit(1)
+        .execute()
+    )
+    if not response.data:
+        return None
+    return response.data[0]
+
+
+def _cc_name_map(client, contest_id: int) -> dict:
+    """Map manager_id -> (player_name, team_name) for a contest, from group members."""
+    response = (
+        client.table("cc_group_members")
+        .select("manager_id,player_name,team_name")
+        .eq("contest_id", contest_id)
+        .execute()
+    )
+    return {r["manager_id"]: (r["player_name"], r.get("team_name")) for r in response.data}
+
+
+@st.cache_data(ttl=300)
+def load_cc_groups(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load group member seedings in the shape the UI expects."""
+    contest = load_cc_contest(season_id)
+    if contest is None:
+        return pd.DataFrame(columns=_CC_GROUP_COLUMNS)
+    client = get_client()
+    groups = (
+        client.table("cc_groups")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .execute()
+    )
+    group_name = {g["id"]: g["name"] for g in groups.data}
+    response = (
+        client.table("cc_group_members")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .order("group_id")
+        .order("seed_rank")
+        .execute()
+    )
+    df = pd.DataFrame(response.data)
+    if df.empty:
+        return pd.DataFrame(columns=_CC_GROUP_COLUMNS)
+    df["Group"] = df["group_id"].map(group_name)
+    df = df.rename(columns={
+        "player_name": "Player", "team_name": "Team", "seed_rank": "Seed Rank",
+    })
+    return df[_CC_GROUP_COLUMNS]
+
+
+@st.cache_data(ttl=300)
+def load_cc_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load group standings in the shape the UI expects.
+
+    Rows are ordered by group then points (desc) then score_for (desc).
+    """
+    contest = load_cc_contest(season_id)
+    if contest is None:
+        return pd.DataFrame(columns=_CC_STANDINGS_COLUMNS)
+    client = get_client()
+    groups = (
+        client.table("cc_groups")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .execute()
+    )
+    group_name = {g["id"]: g["name"] for g in groups.data}
+    response = (
+        client.table("cc_standings")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .order("group_id")
+        .order("points", desc=True)
+        .order("score_for", desc=True)
+        .execute()
+    )
+    df = pd.DataFrame(response.data)
+    if df.empty:
+        return pd.DataFrame(columns=_CC_STANDINGS_COLUMNS)
+    df["Group"] = df["group_id"].map(group_name)
+    df["GD"] = df["score_for"] - df["score_against"]
+    df = df.rename(columns={
+        "player_name": "Player", "team_name": "Team", "played": "P",
+        "wins": "W", "draws": "D", "losses": "L", "points": "Pts",
+        "score_for": "GF", "score_against": "GA", "qualification": "Qualification",
+    })
+    return df[_CC_STANDINGS_COLUMNS]
+
+
+@st.cache_data(ttl=300)
+def load_cc_fixtures(season_id: str, gw: int) -> pd.DataFrame:
+    """Load a gameweek's matches (league + knockout) in the shape the UI expects."""
+    contest = load_cc_contest(season_id)
+    if contest is None:
+        return pd.DataFrame(columns=_CC_FIXTURE_COLUMNS)
+    client = get_client()
+    name_map = _cc_name_map(client, contest["id"])
+    response = (
+        client.table("cc_matches")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .eq("gameweek", gw)
+        .order("phase")
+        .order("round")
+        .order("leg")
+        .execute()
+    )
+    df = pd.DataFrame(response.data)
+    if df.empty:
+        return pd.DataFrame(columns=_CC_FIXTURE_COLUMNS)
+    df["Home"] = df["home_manager_id"].map(lambda i: name_map.get(i, ("?", ""))[0])
+    df["Away"] = df["away_manager_id"].map(lambda i: name_map.get(i, ("?", ""))[0])
+
+    def _score(row):
+        if not row.get("played"):
+            return "vs"
+        return f"{row['home_score']} - {row['away_score']}"
+
+    def _result(row):
+        if not row.get("played"):
+            return "-"
+        return {"home": "Home", "away": "Away", "draw": "Draw"}.get(row.get("result"), "-")
+
+    df["Score"] = df.apply(_score, axis=1)
+    df["Result"] = df.apply(_result, axis=1)
+    df["Leg"] = df["leg"].fillna("-")
+    df = df.rename(columns={"phase": "Phase", "round": "Round"})
+    return df[_CC_FIXTURE_COLUMNS]
+
+
+@st.cache_data(ttl=300)
+def load_cc_ties(season_id: str = config.SEASON_ID) -> pd.DataFrame:
+    """Load knockout ties (UCL + UEL) in the shape the UI expects."""
+    contest = load_cc_contest(season_id)
+    if contest is None:
+        return pd.DataFrame(columns=_CC_TIE_COLUMNS)
+    client = get_client()
+    name_map = _cc_name_map(client, contest["id"])
+    response = (
+        client.table("cc_ties")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .order("competition")
+        .order("round")
+        .order("tie_index")
+        .execute()
+    )
+    df = pd.DataFrame(response.data)
+    if df.empty:
+        return pd.DataFrame(columns=_CC_TIE_COLUMNS)
+    df["Home"] = df["home_manager_id"].map(lambda i: name_map.get(i, ("?", ""))[0])
+    df["Away"] = df["away_manager_id"].map(lambda i: name_map.get(i, ("?", ""))[0])
+    df["Winner"] = df["winner_manager_id"].map(
+        lambda i: name_map.get(i, ("-", ""))[0] if pd.notna(i) else "-"
+    )
+    df["Resolved"] = df["resolved"].map({True: "Yes", False: "No"})
+    df["Note"] = df["tiebreak_note"].fillna("")
+    df = df.rename(columns={"competition": "Competition", "round": "Round"})
+    return df[_CC_TIE_COLUMNS]
