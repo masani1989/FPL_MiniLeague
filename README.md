@@ -317,6 +317,36 @@ A "Last Man Standing" page shows survivors and per-gameweek scorecards.
 A UCL/UEL-style knockout side contest played by the same managers. Like Last
 Man Standing, **there is no cash prize** — it is a friendly side contest.
 
+### Setup
+
+Run this once, before GW1, with the league locked at 26 managers:
+
+1. Apply the migration once (creates the `cc_*` tables):
+   ```bash
+   psql $SUPABASE_DB_URL -f migrations/006_continental_conquest.sql
+   ```
+2. Sync the reference data (managers, league, gameweeks) into Supabase by running
+   a refresh — `generate_schedule` reads managers from the Supabase `managers`
+   table, not the FPL API, so they must be loaded first:
+   ```bash
+   python Utils/refreshData.py --all
+   ```
+3. Generate the group split and league fixtures (before the GW1 deadline — after
+   it the schedule is frozen and cannot be regenerated):
+   ```bash
+   python -m continental_conquest.runner --generate-schedule
+   ```
+   Returns `{"status": "ok", "groups": 2, "fixtures": 312}`. It refuses (returns
+   `status: "skipped"`) if the schedule is already frozen, the GW1 deadline has
+   passed, or fewer than 2 managers are loaded. Re-running before the deadline is
+   safe (idempotent upserts) — use it to absorb late joiners.
+
+Seeding uses each manager's average rank over the last three seasons in
+`overall_standings`; managers with no history are seeded last. If this is the
+first season, seeding falls back to insertion order. After setup, the refresh
+pipeline and scheduler score each finished gameweek automatically — no further
+manual steps are needed. See "How it runs" below for the backfill option.
+
 ### Structure
 
 - **Group stage (GW1–31):** managers split into two groups of 13, seeded by the
