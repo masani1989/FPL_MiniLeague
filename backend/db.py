@@ -574,12 +574,14 @@ async def get_cc_tie(tie_id: int) -> dict | None:
     return records[0] if records else None
 
 
-async def upsert_cc_tie(record: dict) -> None:
-    """Insert or update a Continental Conquest tie row."""
+async def upsert_cc_tie(record: dict) -> dict | None:
+    """Insert or update a Continental Conquest tie row; return the persisted record (or None)."""
     client = await get_client()
-    await client.table("cc_ties").upsert(
+    response = await client.table("cc_ties").upsert(
         [record], on_conflict="contest_id,competition,round,tie_index"
     ).execute()
+    records = _to_records(response)
+    return records[0] if records else None
 
 
 async def complete_cc_contest(contest_id: int, winner_id: int, runner_up_id: int | None) -> None:

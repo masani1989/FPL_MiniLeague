@@ -273,11 +273,13 @@ async def test_upsert_cc_tie(monkeypatch):
         "round": "qf",
         "tie_index": 0,
     }
-    await db.upsert_cc_tie(record)
+    chain.execute = _exec([{"id": 7, "contest_id": 1, "competition": "champions", "round": "qf", "tie_index": 0}])
+    result = await db.upsert_cc_tie(record)
     client.table.assert_called_once_with("cc_ties")
     chain.upsert.assert_called_once_with(
         [record], on_conflict="contest_id,competition,round,tie_index"
     )
+    assert result["id"] == 7
 
 
 @pytest.mark.asyncio

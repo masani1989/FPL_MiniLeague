@@ -180,7 +180,7 @@ async def finalize_groups(season_id: str = config.SEASON_ID, league_id: int = co
     uel = build_uel_quarters(ga, gb)
     ties_persisted = await _persist_round(contest["id"], "ucl", "ro16", ucl, leg_gws=(32, 33))
     ties_persisted += await _persist_round(contest["id"], "uel", "qf", uel, leg_gws=(32, 33))
-    # advance contest to knockout phase
+    # advance contest to knockout phase (re-runs are idempotent: a second call sees phase='ucl' and skips at the top guard)
     await db.complete_league_phase(contest["id"])   # sets phase='ucl', status='knockouts'
     return {"status": "ok", "ties_persisted": ties_persisted}
 

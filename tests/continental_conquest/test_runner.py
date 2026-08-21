@@ -99,7 +99,7 @@ async def test_finalize_groups_builds_knockouts():
          patch.object(runner.db, "get_cc_group_members", new=AsyncMock(side_effect=[members_a, members_b])), \
          patch.object(runner.db, "get_cc_league_results", new=AsyncMock(return_value=[])), \
          patch.object(runner.db, "upsert_cc_standing", new=AsyncMock()), \
-         patch.object(runner.db, "upsert_cc_tie", new=AsyncMock()), \
+         patch.object(runner.db, "upsert_cc_tie", new=AsyncMock(return_value={"id": 1})), \
          patch.object(runner.db, "upsert_cc_fixture", new=AsyncMock()), \
          patch.object(runner.db, "complete_league_phase", new=AsyncMock()):
         result = await runner.finalize_groups("2026-27", 581588)
