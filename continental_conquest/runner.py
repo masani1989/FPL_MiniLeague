@@ -3,9 +3,11 @@ from __future__ import annotations
 from backend import config, db
 from backend.fpl_client import FPLClient
 from . import scheduling, scoring, tiebreak, bracket, standings as standings_mod
-from .models import GroupMember, Fixture
+from .models import GroupMember, Fixture, MatchResult
 from .scheduling import seed_groups, build_league_fixtures
 from .scoring import league_score
+from .standings import compute_group_standings
+from .bracket import build_ucl_ro16, build_uel_quarters, qualification
 
 
 async def ensure_contest(season_id: str = config.SEASON_ID, league_id: int = config.FPL_LEAGUE_ID) -> dict:
@@ -136,3 +138,65 @@ async def run_league_gw(gw: int, season_id: str = config.SEASON_ID,
         })
         scored += 1
     return {"status": "ok", "gw": gw, "matches_scored": scored}
+
+
+def _result_row_to_matchresult(row: dict) -> MatchResult:
+    return MatchResult(
+        home_manager_id=row["home_manager_id"], away_manager_id=row["away_manager_id"],
+        home_score=row["home_score"], away_score=row["away_score"],
+    )
+
+
+async def finalize_groups(season_id: str = config.SEASON_ID, league_id: int = config.FPL_LEAGUE_ID) -> dict:
+    contest = await ensure_contest(season_id, league_id)
+    if contest.get("phase") not in ("league",):
+        return {"status": "skipped", "reason": "not in league phase"}
+    groups = await db.get_cc_groups(contest["id"])
+    ordered_by_group: dict[int, list] = {}
+    for g in groups:
+        members_rows = await db.get_cc_group_members(contest["id"], g["id"])  # Ruling 6: per-group filter
+        members = [GroupMember(r["manager_id"], r["player_name"], r["team_name"], None)
+                   for r in members_rows]
+        result_rows = await db.get_cc_league_results(contest["id"], g["id"])
+        results = [_result_row_to_matchresult(r) for r in result_rows]
+        ordered = compute_group_standings(members, results, g["id"], contest["id"])
+        qual = qualification(ordered)
+        ordered_by_group[g["id"]] = ordered
+        for s in ordered:
+            await db.upsert_cc_standing({
+                "contest_id": contest["id"], "group_id": g["id"], "manager_id": s.manager_id,
+                "player_name": s.player_name, "team_name": s.team_name,
+                "played": s.played, "wins": s.wins, "draws": s.draws, "losses": s.losses,
+                "points": s.points, "score_for": s.score_for, "score_against": s.score_against,
+                "goals_scored": s.goals_scored, "goals_conceded": s.goals_conceded,
+                "clean_sheets": s.clean_sheets, "assists": s.assists, "bench_points": s.bench_points,
+                "group_rank": s.group_rank, "qualification": qual[s.manager_id],
+            })
+
+    # group A vs B
+    ga = next(v for k, v in ordered_by_group.items() if k == groups[0]["id"])
+    gb = next(v for k, v in ordered_by_group.items() if k == groups[1]["id"])
+    ucl = build_ucl_ro16(ga, gb)
+    uel = build_uel_quarters(ga, gb)
+    ties_persisted = await _persist_round(contest["id"], "ucl", "ro16", ucl, leg_gws=(32, 33))
+    ties_persisted += await _persist_round(contest["id"], "uel", "qf", uel, leg_gws=(32, 33))
+    # advance contest to knockout phase
+    await db.complete_league_phase(contest["id"])   # sets phase='ucl', status='knockouts'
+    return {"status": "ok", "ties_persisted": ties_persisted}
+
+
+async def _persist_round(contest_id, competition, round_name, pairings, leg_gws) -> int:
+    """Persist each tie + its two leg matches. Returns count of ties."""
+    for i, (home, away) in enumerate(pairings):
+        tie = await db.upsert_cc_tie({
+            "contest_id": contest_id, "competition": competition, "round": round_name,
+            "tie_index": i + 1, "home_manager_id": home, "away_manager_id": away,
+            "resolved": False,
+        })
+        for leg_no, gw in enumerate(leg_gws, start=1):
+            await db.upsert_cc_fixture({
+                "contest_id": contest_id, "phase": competition, "competition": competition,
+                "round": round_name, "gameweek": gw, "leg": leg_no, "tie_id": tie["id"],
+                "home_manager_id": home, "away_manager_id": away, "played": False,
+            })
+    return len(pairings)

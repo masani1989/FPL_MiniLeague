@@ -632,3 +632,11 @@ async def get_manager_rank_history(manager_ids: list[int], current_season_id: st
             continue
         history.setdefault(mid, []).append(float(r["rank"]))
     return {mid: ranks[:3] for mid, ranks in history.items()}
+
+
+async def complete_league_phase(contest_id: int) -> None:
+    """Advance the contest out of the league phase into knockouts."""
+    client = await get_client()
+    await client.table("cc_contest").update(
+        {"status": "knockouts", "phase": "ucl"}
+    ).eq("id", contest_id).execute()

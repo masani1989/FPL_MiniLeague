@@ -86,3 +86,25 @@ async def test_run_league_gw_skips_unfinished():
     with patch.object(runner.db, "get_cc_contest", new=AsyncMock(return_value={"id": 1, "status": "league"})):
         result = await runner.run_league_gw(1, client=FakeClient())
     assert result["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_finalize_groups_builds_knockouts():
+    # two groups, each 13 members, results for each
+    members_a = [{"manager_id": i, "player_name": f"A{i}", "team_name": "T"} for i in range(1, 14)]
+    members_b = [{"manager_id": 100 + i, "player_name": f"B{i}", "team_name": "T"} for i in range(1, 14)]
+    # fabricate standings rows (already ranked) -> simpler: stub compute by returning ordered standings
+    with patch.object(runner.db, "get_cc_contest", new=AsyncMock(return_value={"id": 1, "status": "league", "phase": "league"})), \
+         patch.object(runner.db, "get_cc_groups", new=AsyncMock(return_value=[{"id": 10, "name": "A"}, {"id": 11, "name": "B"}])), \
+         patch.object(runner.db, "get_cc_group_members", new=AsyncMock(side_effect=[members_a, members_b])), \
+         patch.object(runner.db, "get_cc_league_results", new=AsyncMock(return_value=[])), \
+         patch.object(runner.db, "upsert_cc_standing", new=AsyncMock()), \
+         patch.object(runner.db, "upsert_cc_tie", new=AsyncMock()), \
+         patch.object(runner.db, "upsert_cc_fixture", new=AsyncMock()), \
+         patch.object(runner.db, "complete_league_phase", new=AsyncMock()):
+        result = await runner.finalize_groups("2026-27", 581588)
+        assert result["status"] == "ok"
+        # 8 UCL + 4 UEL ties
+        assert runner.db.upsert_cc_tie.call_count == 12
+        # leg matches: UCL 8 ties * 2 legs + UEL 4 ties * 2 legs = 24
+        assert runner.db.upsert_cc_fixture.call_count == 24
