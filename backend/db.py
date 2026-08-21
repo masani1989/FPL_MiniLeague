@@ -588,3 +588,47 @@ async def complete_cc_contest(contest_id: int, winner_id: int, runner_up_id: int
     await client.table("cc_contest").update(
         {"status": "completed", "winner_manager_id": winner_id, "runner_up_manager_id": runner_up_id}
     ).eq("id", contest_id).execute()
+
+
+async def freeze_schedule(contest_id: int) -> None:
+    """Lock the fixture set so it can no longer be regenerated (post GW1 deadline)."""
+    client = await get_client()
+    await client.table("cc_contest").update({"schedule_frozen": True}).eq("id", contest_id).execute()
+
+
+async def get_cc_schedule_frozen(contest_id: int) -> bool:
+    client = await get_client()
+    response = (
+        await client.table("cc_contest")
+        .select("schedule_frozen")
+        .eq("id", contest_id)
+        .limit(1)
+        .execute()
+    )
+    records = _to_records(response)
+    return bool(records[0]["schedule_frozen"]) if records else False
+
+
+async def get_manager_rank_history(manager_ids: list[int], current_season_id: str = config.SEASON_ID) -> dict[int, list[float]]:
+    """Return {manager_id: [rank, ...]} for up to the 3 most recent seasons BEFORE current_season_id.
+
+    Queries overall_standings ordered by season_id DESC, then in Python excludes the
+    current season and keeps up to 3 most recent prior-season ranks per manager.
+    Managers with no prior history get an empty list (seeded last by the caller).
+    """
+    client = await get_client()
+    response = (
+        await client.table("overall_standings")
+        .select("manager_id,rank,season_id")
+        .in_("manager_id", list(manager_ids))
+        .order("season_id", desc=True)
+        .execute()
+    )
+    rows = _to_records(response)
+    history: dict[int, list[float]] = {mid: [] for mid in manager_ids}
+    for r in rows:
+        mid = r["manager_id"]
+        if r["season_id"] == current_season_id:
+            continue
+        history.setdefault(mid, []).append(float(r["rank"]))
+    return {mid: ranks[:3] for mid, ranks in history.items()}

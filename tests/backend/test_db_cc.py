@@ -328,3 +328,54 @@ async def test_get_cc_tie_returns_row(monkeypatch):
     chain.limit.assert_called_once_with(1)
 
 
+@pytest.mark.asyncio
+async def test_get_cc_schedule_frozen_true(monkeypatch):
+    client = MagicMock()
+    chain = _builder()
+    chain.execute = _exec([{"schedule_frozen": True}])
+    client.table.return_value = chain
+    _patch_get_client(monkeypatch, client)
+
+    result = await db.get_cc_schedule_frozen(contest_id=1)
+    assert result is True
+    client.table.assert_called_once_with("cc_contest")
+    chain.select.assert_called_once_with("schedule_frozen")
+    chain.eq.assert_any_call("id", 1)
+    chain.limit.assert_called_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_get_cc_schedule_frozen_false(monkeypatch):
+    client = MagicMock()
+    chain = _builder()
+    chain.execute = _exec([])
+    client.table.return_value = chain
+    _patch_get_client(monkeypatch, client)
+
+    result = await db.get_cc_schedule_frozen(contest_id=1)
+    assert result is False
+    client.table.assert_called_once_with("cc_contest")
+    chain.select.assert_called_once_with("schedule_frozen")
+    chain.eq.assert_any_call("id", 1)
+    chain.limit.assert_called_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_get_manager_rank_history(monkeypatch):
+    client = MagicMock()
+    chain = _builder()
+    chain.execute = _exec([
+        {"manager_id": 1, "rank": 3, "season_id": "2025-26"},
+        {"manager_id": 1, "rank": 5, "season_id": "2026-27"},
+        {"manager_id": 2, "rank": 1, "season_id": "2025-26"},
+    ])
+    client.table.return_value = chain
+    _patch_get_client(monkeypatch, client)
+
+    result = await db.get_manager_rank_history([1, 2], "2026-27")
+    assert result == {1: [3.0], 2: [1.0]}
+    client.table.assert_called_once_with("overall_standings")
+    chain.in_.assert_called_once_with("manager_id", [1, 2])
+    chain.order.assert_any_call("season_id", desc=True)
+
+
