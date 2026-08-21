@@ -574,6 +574,15 @@ async def get_cc_tie(tie_id: int) -> dict | None:
     return records[0] if records else None
 
 
+async def get_cc_tie_legs(contest_id: int, tie_id: int) -> list[dict]:
+    """Return the cc_matches leg rows for a knockout tie, ordered by leg."""
+    client = await get_client()
+    response = (await client.table("cc_matches").select("*")
+                .eq("contest_id", contest_id).eq("tie_id", tie_id)
+                .order("leg").execute())
+    return _to_records(response)
+
+
 async def upsert_cc_tie(record: dict) -> dict | None:
     """Insert or update a Continental Conquest tie row; return the persisted record (or None)."""
     client = await get_client()

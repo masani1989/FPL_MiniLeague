@@ -5,9 +5,12 @@ from backend.fpl_client import FPLClient
 from . import scheduling, scoring, tiebreak, bracket, standings as standings_mod
 from .models import GroupMember, Fixture, MatchResult
 from .scheduling import seed_groups, build_league_fixtures
-from .scoring import league_score
+from .scoring import league_score, knockout_score
 from .standings import compute_group_standings
-from .bracket import build_ucl_ro16, build_uel_quarters, qualification
+from .bracket import build_ucl_ro16, build_uel_quarters, qualification, next_round_pairings
+from .tiebreak import resolve_tie
+from .models import TieLeg
+from .constants import KNOCKOUT_ROUNDS
 
 
 async def ensure_contest(season_id: str = config.SEASON_ID, league_id: int = config.FPL_LEAGUE_ID) -> dict:
@@ -200,3 +203,107 @@ async def _persist_round(contest_id, competition, round_name, pairings, leg_gws)
                 "home_manager_id": home, "away_manager_id": away, "played": False,
             })
     return len(pairings)
+
+
+async def run_knockout_gw(gw: int, season_id: str = config.SEASON_ID,
+                          league_id: int = config.FPL_LEAGUE_ID, client: FPLClient | None = None) -> dict:
+    contest = await ensure_contest(season_id, league_id)
+    if contest.get("status") not in ("knockouts", "completed"):
+        return {"status": "skipped", "reason": "not in knockout phase", "gw": gw}
+    client = client or FPLClient()
+    bootstrap = await client.get_bootstrap_static()
+    event = next((e for e in bootstrap["events"] if e["id"] == gw), None)
+    if event is None or not event["finished"]:
+        return {"status": "skipped", "reason": "gameweek not finished", "gw": gw}
+
+    members = {m["manager_id"]: m for m in await db.get_cc_group_members(contest["id"])}
+    matches = await db.get_cc_matches_for_gw(contest["id"], gw)   # unplayed, any phase
+    live = await client.get_gw_live(gw)
+    live_elements = live.get("elements", {})
+    scored = 0
+    touched: set[tuple[str, str]] = set()
+    for m in matches:
+        if m["phase"] == "league":
+            continue
+        hm, am = members[m["home_manager_id"]], members[m["away_manager_id"]]
+        hp = await client.get_entry_picks(hm["fpl_entry_id"], gw)
+        ap = await client.get_entry_picks(am["fpl_entry_id"], gw)
+        hs = knockout_score(hp, live_elements, hm["manager_id"], hm["fpl_entry_id"], hm["player_name"], hm["team_name"])
+        as_ = knockout_score(ap, live_elements, am["manager_id"], am["fpl_entry_id"], am["player_name"], am["team_name"])
+        await db.upsert_cc_fixture({
+            "contest_id": contest["id"], "phase": m["phase"], "competition": m["competition"],
+            "round": m["round"], "gameweek": gw, "leg": m["leg"], "tie_id": m["tie_id"],
+            "home_manager_id": m["home_manager_id"], "away_manager_id": m["away_manager_id"],
+            "home_score": hs, "away_score": as_,
+            "home_first_xi": hs, "away_first_xi": as_,
+            "result": "home" if hs > as_ else "away" if as_ > hs else "draw",
+            "played": True,
+        })
+        scored += 1
+        resolved_round = await _maybe_resolve_tie(contest["id"], m["tie_id"])
+        if resolved_round is not None:
+            touched.add(resolved_round)
+    # seed the next round (or complete the contest) for every round that got a resolution
+    for competition, round_name in sorted(touched):
+        await _maybe_seed_next_round(contest["id"], competition, round_name)
+    return {"status": "ok", "gw": gw, "matches_scored": scored}
+
+
+async def _maybe_resolve_tie(contest_id: int, tie_id: int) -> tuple[str, str] | None:
+    """Resolve a single tie if all its legs are played. Returns (competition, round) if resolved."""
+    leg_rows = await db.get_cc_tie_legs(contest_id, tie_id)
+    if not leg_rows or not all(r.get("played") for r in leg_rows):
+        return None
+    tie = await db.get_cc_tie(tie_id)
+    if not tie:
+        return None
+    legs = [TieLeg(r["home_manager_id"], r["away_manager_id"], r["home_score"], r["away_score"]) for r in leg_rows]
+    result = resolve_tie(legs, contest_id, tie["tie_index"])
+    await db.upsert_cc_tie({
+        "contest_id": contest_id, "competition": tie["competition"], "round": tie["round"],
+        "tie_index": tie["tie_index"],
+        "home_manager_id": tie["home_manager_id"], "away_manager_id": tie["away_manager_id"],
+        "resolved": True, "winner_manager_id": result.winner_manager_id,
+        "loser_manager_id": result.loser_manager_id, "tiebreak_note": result.tiebreak_note,
+        "coin_toss_required": result.coin_toss_required, "coin_toss_winner": result.coin_toss_winner,
+    })
+    return (tie["competition"], tie["round"])
+
+
+def _next_round(competition: str, round_name: str) -> dict | None:
+    rounds = KNOCKOUT_ROUNDS[competition]
+    idx = next(i for i, r in enumerate(rounds) if r["round"] == round_name)
+    return rounds[idx + 1] if idx + 1 < len(rounds) else None
+
+
+async def _maybe_seed_next_round(contest_id: int, competition: str, round_name: str) -> None:
+    ties = await db.get_cc_ties_for_round(contest_id, competition, round_name)
+    if not ties or not all(t.get("resolved") for t in ties):
+        return  # not all ties in this round resolved yet
+    nxt = _next_round(competition, round_name)
+    if nxt is None:
+        # final: mark the contest completed (winner + runner-up = loser)
+        final_tie = ties[0]
+        await db.complete_cc_contest(contest_id, final_tie["winner_manager_id"], final_tie["loser_manager_id"])
+        return
+    winners = [t["winner_manager_id"] for t in sorted(ties, key=lambda t: t["tie_index"])]
+    pairings = next_round_pairings(winners, 0)
+    await _seed_round(contest_id, competition, nxt["round"], pairings, nxt["legs"])
+
+
+async def _seed_round(contest_id, competition, round_name, pairings, leg_gws) -> None:
+    """Persist next-round ties + their leg matches. Dedupes gameweeks so a single-leg
+    final (legs=(38,38)) creates one leg, not two."""
+    distinct_gws = sorted(set(leg_gws))
+    for i, (home, away) in enumerate(pairings):
+        tie = await db.upsert_cc_tie({
+            "contest_id": contest_id, "competition": competition, "round": round_name,
+            "tie_index": i + 1, "home_manager_id": home, "away_manager_id": away,
+            "resolved": False,
+        })
+        for leg_no, gw in enumerate(distinct_gws, start=1):
+            await db.upsert_cc_fixture({
+                "contest_id": contest_id, "phase": competition, "competition": competition,
+                "round": round_name, "gameweek": gw, "leg": leg_no, "tie_id": tie["id"],
+                "home_manager_id": home, "away_manager_id": away, "played": False,
+            })

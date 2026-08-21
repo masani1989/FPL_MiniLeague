@@ -381,3 +381,19 @@ async def test_get_manager_rank_history(monkeypatch):
     chain.order.assert_any_call("season_id", desc=True)
 
 
+@pytest.mark.asyncio
+async def test_get_cc_tie_legs(monkeypatch):
+    client = MagicMock()
+    chain = _builder()
+    chain.execute = _exec([{"id": 11, "leg": 1}, {"id": 12, "leg": 2}])
+    client.table.return_value = chain
+    _patch_get_client(monkeypatch, client)
+
+    result = await db.get_cc_tie_legs(contest_id=1, tie_id=101)
+    assert len(result) == 2
+    client.table.assert_called_once_with("cc_matches")
+    chain.eq.assert_any_call("contest_id", 1)
+    chain.eq.assert_any_call("tie_id", 101)
+    chain.order.assert_called_once_with("leg")
+
+
