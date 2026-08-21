@@ -52,7 +52,7 @@ st.markdown(f"""
 </div>
 <div style='background: #333; border-radius: 12px; padding: 14px 24px; margin-bottom: 18px; display: flex; align-items: center;'>
     <img src='https://img.icons8.com/color/48/alarm.png' style='width:40px;height:40px;margin-right:18px;' alt='Deadline'/>
-    <span style='font-size:22px; color:#FFD700; font-weight:600;'>Gameweek {str(st.session_state['gw_id'])} <b>Deadline</b>: <span style='color:#fff;'>{st.session_state['deadline']}</span></span>
+    <span style='font-size:22px; color:#FFD700; font-weight:600;'>Gameweek {str(st.session_state['gw_id'] + 1)} <b>Deadline</b>: <span style='color:#fff;'>{st.session_state['deadline']}</span></span>
 </div>
 """, unsafe_allow_html=True)
 

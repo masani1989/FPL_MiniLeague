@@ -14,6 +14,7 @@ import asyncio
 from backend import config, db
 from backend.fpl_client import FPLClient
 
+from .constants import SKIP_GWS
 from .elimination import determine_elimination
 from .scoring import compute_manager_score
 
@@ -55,6 +56,11 @@ async def run_lms_for_gw(
     score each → persist score rows → eliminate the loser → record the
     elimination → complete the contest if a winner emerges → advance current_gw.
     """
+    # Step 1: bye weeks are not scored. Checked before ensure_contest so a bye
+    # GW costs no DB round-trips (the scheduler calls this every minute).
+    if gw in SKIP_GWS:
+        return {"status": "skipped", "reason": "excluded gameweek (bye)", "gw": gw}
+
     contest = await ensure_contest(season_id, league_id)
     contest_id = contest["id"]
     client = client or FPLClient()
@@ -192,7 +198,9 @@ async def backfill_lms(
         to_gw = max(finished_ids) if finished_ids else from_gw
 
     finished_gws = sorted(
-        e["id"] for e in events if e["finished"] and from_gw <= e["id"] <= to_gw
+        e["id"]
+        for e in events
+        if e["finished"] and from_gw <= e["id"] <= to_gw and e["id"] not in SKIP_GWS
     )
 
     results: list[dict] = []

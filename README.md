@@ -277,6 +277,19 @@ managers. **There is no cash prize** — it is a friendly side contest.
 - **Chips ignored**, captain capped at **x2**, bench excluded.
 - The contest continues until one survivor remains.
 
+### Bye weeks (2026-27)
+
+To spread the contest across the full 38-gameweek season with 26 managers, 13
+gameweeks are **byes** — no scoring, no elimination:
+
+**2, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36**
+
+That leaves 38 − 13 = 25 scored gameweeks = 25 eliminations, so the last
+survivor is crowned at **GW38**. Byes are defined in
+`last_man_standing/constants.py::SKIP_GWS` and are skipped by the runner before
+any DB or FPL work; on the Streamlit page they appear as "GW N (bye)" in the
+gameweek selector.
+
 ### Tiebreakers
 
 When two or more alive managers share the lowest First XI score, the
