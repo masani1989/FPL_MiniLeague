@@ -264,3 +264,50 @@ Render's free tier has no cron jobs, so keep-alive runs as a GitHub Actions sche
 - Render free tier sleeps after 15 minutes of inactivity. First request after sleep will be slow (~30–60s).
 - Local Ollama does not work on Render; use Ollama Cloud or an OpenAI-compatible provider.
 - Telegram webhook is set automatically on startup if `TELEGRAM_WEBHOOK_URL` is set.
+
+## Last Man Standing
+
+A pilot knockout contest running alongside the main league with the same
+managers. **There is no cash prize** — it is a friendly side contest.
+
+### Rules
+
+- Each finished gameweek, the alive manager with the lowest **First XI** score
+  is eliminated (one per gameweek).
+- **Chips ignored**, captain capped at **x2**, bench excluded.
+- The contest continues until one survivor remains.
+
+### Tiebreakers
+
+When two or more alive managers share the lowest First XI score, the
+elimination is decided by, in order:
+
+1. Goals scored
+2. Goals conceded
+3. Clean sheets
+4. Assists
+5. Bench points
+6. Coin toss (deterministic seeded toss, only on a full 6-stat tie)
+
+### How it runs
+
+- The refresh pipeline (`python Utils/refreshData.py --all`) processes the
+  latest finished gameweek as part of the normal refresh.
+- A scheduled Telegram announcement posts each elimination once (deduped on
+  retry).
+- Backfill from a given gameweek:
+
+  ```bash
+  python -m last_man_standing.runner --backfill --from-gw 1
+  ```
+
+  `--to-gw N` caps the range (default: latest finished gameweek).
+
+### Telegram
+
+- `/lms` — current survivor standings.
+- `/lms <gameweek>` — that gameweek's scorecard (eliminated manager + tiebreakers).
+
+### Streamlit
+
+A "Last Man Standing" page shows survivors and per-gameweek scorecards.

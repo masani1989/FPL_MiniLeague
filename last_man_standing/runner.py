@@ -8,6 +8,9 @@ scoring and elimination are delegated to `scoring.compute_manager_score` and
 """
 from __future__ import annotations
 
+import argparse
+import asyncio
+
 from backend import config, db
 from backend.fpl_client import FPLClient
 
@@ -218,3 +221,25 @@ def _score_record(contest_id: int, gameweek_id: int, gw: int, score) -> dict:
         "assists": t.assists,
         "bench_points": t.bench_points,
     }
+
+
+def main(argv: list[str] | None = None) -> list[dict] | None:
+    """Command-line entrypoint for the Last Man Standing runner.
+
+    Usage:
+        python -m last_man_standing.runner --backfill [--from-gw N] [--to-gw N]
+    """
+    parser = argparse.ArgumentParser(description="Last Man Standing contest runner")
+    parser.add_argument("--backfill", action="store_true", help="Backfill LMS for finished gameweeks in the range")
+    parser.add_argument("--from-gw", type=int, default=1, help="First gameweek to backfill (default 1)")
+    parser.add_argument("--to-gw", type=int, default=None, help="Last gameweek to backfill (default: latest finished)")
+    args = parser.parse_args(argv)
+
+    if args.backfill:
+        return asyncio.run(backfill_lms(from_gw=args.from_gw, to_gw=args.to_gw))
+    parser.print_help()
+    return None
+
+
+if __name__ == "__main__":
+    main()
