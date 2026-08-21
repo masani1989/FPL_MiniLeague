@@ -8,6 +8,7 @@ from backend.agent import OllamaAgent
 from backend.fpl_client import FPLClient
 from backend.gameweek import get_phases, get_recent_completed_gameweek
 from backend.tools.mini_league import get_standings
+from last_man_standing.runner import run_lms_for_gw
 
 
 scheduler = AsyncIOScheduler()
@@ -46,6 +47,14 @@ def start_scheduler(telegram_app) -> None:
         minute="37",
         args=(telegram_app,),
         id="pre_gw_suggestions",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        announce_lms_elimination,
+        "cron",
+        minute="47",
+        args=(telegram_app,),
+        id="announce_lms_elimination",
         replace_existing=True,
     )
     scheduler.start()
@@ -156,3 +165,28 @@ async def pre_gameweek_suggestions(telegram_app) -> None:
             response = await agent.chat(f"Give captain and transfer suggestions for gameweek {gw['id']}")
             await _send_to_active_chats(telegram_app, response.reply, "pre_gw_suggestions", f"gw_{gw['id']}")
             return
+
+
+async def announce_lms_elimination(telegram_app) -> None:
+    """Run LMS elimination for the most-recent finished GW and announce the loser."""
+    if telegram_app is None:
+        return
+    recent_gw, is_finished = await get_recent_completed_gameweek()
+    if not is_finished or not recent_gw:
+        return
+    summary = await run_lms_for_gw(recent_gw)
+    if summary.get("status") != "ok" or not summary.get("eliminated"):
+        return
+    eliminated = summary["eliminated"]
+    gw = summary["gw"]
+    alive = summary.get("alive", [])
+    text = (
+        f"🛡️ Last Man Standing — Gameweek {gw}:\n"
+        f"❌ {eliminated['player_name']} has been eliminated!\n"
+        f"🧍 {len(alive)} survivors remain."
+    )
+    if eliminated.get("coin_toss_required"):
+        text += "\n🪙 Tie was decided by a coin toss."
+    if summary.get("completed"):
+        text += "\n🏆 We have a Last Man Standing winner!"
+    await _send_to_active_chats(telegram_app, text, "lms_elimination", f"gw_{recent_gw}")
