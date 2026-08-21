@@ -311,3 +311,77 @@ elimination is decided by, in order:
 ### Streamlit
 
 A "Last Man Standing" page shows survivors and per-gameweek scorecards.
+
+## Continental Conquest
+
+A UCL/UEL-style knockout side contest played by the same managers. Like Last
+Man Standing, **there is no cash prize** — it is a friendly side contest.
+
+### Structure
+
+- **Group stage (GW1–31):** managers split into two groups of 13, seeded by the
+  average of their ranks over the last three seasons. Each group plays a double
+  round-robin (home and away), 24 games per manager with byes.
+- **Qualification:** the top 8 across the groups go to the **UCL** bracket, the
+  next 4 to the **UEL** bracket, and the last manager is eliminated.
+- **Knockouts (GW32–38):** two-legged head-to-head ties, 3/1/0 points per leg.
+  The phase map is:
+  - GW32–33 — UCL Round of 16, UEL Quarter-finals
+  - GW34–35 — UCL Quarter-finals
+  - GW36–37 — Semi-finals (UCL + UEL)
+  - GW38 — UCL and UEL **finals** (single leg)
+
+### Scoring rules
+
+- **League stage:** each matchday's score is the **net gameweek score minus
+  transfer hits** (gross), with **chips** (3xc, bench boost) counted.
+- **Knockout stage:** each leg is scored on **First XI points only** — no chips,
+  no bench. The tie is decided on aggregate over the two legs.
+
+### Knockout tiebreak
+
+When a two-legged tie is level on aggregate, the winner is decided by, in order:
+
+1. Aggregate score (compared first)
+2. Goals scored
+3. Goals conceded
+4. Clean sheets
+5. Assists
+6. Bench points
+7. Coin toss (deterministic seeded toss)
+
+The final uses the same tiebreak.
+
+### How it runs
+
+- The fixture schedule is generated **before GW1** and is resettable until the
+  GW1 deadline, after which it is frozen. Historical re-scoring of past
+  gameweeks is always allowed.
+- The refresh pipeline (`python Utils/refreshData.py --all`) runs CC for the
+  latest finished gameweek as part of the normal refresh (error-isolated so a
+  CC failure never breaks the main refresh).
+- A scheduled Telegram announcement posts a short round-completion summary
+  once per gameweek (deduped on `gw_{gw}`).
+- Generate the schedule before GW1:
+
+  ```bash
+  python -m continental_conquest.runner --generate-schedule
+  ```
+
+- Backfill from a given gameweek (caps the range with `--to-gw N`):
+
+  ```bash
+  python -m continental_conquest.runner --backfill --from-gw 1
+  ```
+
+### Telegram
+
+- `/cc` — overall group standings and knockout bracket.
+- `/cc <gameweek>` — that gameweek's fixtures and scores.
+- `/cc group A` (or `B`) — that group's standings table.
+
+### Streamlit
+
+A "Continental Conquest" page has three tabs: **Groups** (two standings tables
+with qualification color-coded), **Fixtures** (a gameweek selector), and
+**Bracket** (UCL and UEL ties per round with winners).
