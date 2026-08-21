@@ -370,6 +370,14 @@ async def get_lms_standings_rows(contest_id: int) -> list[dict]:
     return _to_records(response)
 
 
+async def set_lms_current_gw(contest_id: int, gw: int) -> None:
+    """Update the LMS contest's `current_gw` pointer after a processed gameweek."""
+    client = await get_client()
+    await client.table("lms_contest").update(
+        {"current_gw": gw}
+    ).eq("id", contest_id).execute()
+
+
 async def get_lms_gw_scores(contest_id: int, gw: int) -> list[dict]:
     """Return LMS gameweek score rows for a contest+GW, highest points first."""
     client = await get_client()
