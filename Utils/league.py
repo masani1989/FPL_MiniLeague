@@ -54,9 +54,9 @@ class league:
 
         try:
             players = [{'Id': player['entry'], 'Team': player['entry_name'],
-                        'Player': player['player_first_name'].capitalize() + ' '
-                                  + player['player_last_name'].capitalize()}
-                       for player in data['new_entries']['results']]
+                        'Player':  player['player_name'].split(' ')[0].capitalize() + ' '
+                                  + player['player_name'].split(' ')[1].capitalize()}
+                       for player in data['standings']['results']]
             logging.info('Total Players in the league -> ' + str(len(players)))
 
         except Exception as e:
