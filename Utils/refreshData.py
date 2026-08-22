@@ -45,7 +45,7 @@ def _ensure_reference_tables():
     return league_id, manager_id_map, gameweek_id_map
 
 
-def refGw(gw=None):
+def refGw(gw=None, gwStatus=None):
     """Refresh the latest ongoing/completed gameweek's data.
 
     If `gw` is provided, refresh that specific gameweek and treat it as finished
@@ -58,7 +58,7 @@ def refGw(gw=None):
     if gw is None:
         currGw = gwk.get_recent_completed_gameweek()
     else:
-        currGw = [gw, True]
+        currGw = [gw, gwStatus]
 
     db.delete_gameweek(currGw[0], gameweek_id_map)
     gw_plr_list = []
@@ -69,8 +69,7 @@ def refGw(gw=None):
 
     gw_df = pd.DataFrame.from_records(gw_plr_list)
     if not gw_df.empty:
-        gw_df['Rank'] = gw_df.groupby('Gameweek')['Points'].rank(ascending=False, method='dense')
-
+        gw_df['Rank'] = gw_df.groupby('Gameweek')['Points'].rank(ascending=False, method='dense').astype('int64')
         db.upsert_gameweek(gw_df, manager_id_map, gameweek_id_map, config.SEASON_ID)
         refMnth(currGw[0], manager_id_map, gameweek_id_map)
         refOverall(manager_id_map)
@@ -130,7 +129,7 @@ def refresh_all():
     league_id, manager_id_map, gameweek_id_map = _ensure_reference_tables()
     latest_gw = gwk.get_recent_completed_gameweek()
 
-    refGw(gw=latest_gw[0])
+    refGw(gw=latest_gw[0], gwStatus=latest_gw[1])
     _compute_and_upsert_winnings(manager_id_map, gameweek_id_map, latest_gw)
 
 
@@ -153,7 +152,7 @@ def refMnth(g, manager_id_map=None, gameweek_id_map=None):
     merged_df = pd.merge(latest_gw, gw_mnth_lkp, on='Gameweek')
 
     merged_mth_df = merged_df.groupby(['PlayerId', 'Player', 'Month'])['Points'].sum().reset_index()
-    merged_mth_df['Rank'] = merged_mth_df.groupby(['Month'])['Points'].rank(method='dense', ascending=False)
+    merged_mth_df['Rank'] = merged_mth_df.groupby(['Month'])['Points'].rank(method='dense', ascending=False).astype('int64')
 
     db.upsert_monthly(merged_mth_df, manager_id_map, config.SEASON_ID)
 
@@ -215,6 +214,6 @@ if __name__ == '__main__':
     elif args.cc:
         refCc(args.gw)
     elif args.gw:
-        refGw(args.gw)
+        refGw(args.gw, True)
     else:
         refresh_all()
