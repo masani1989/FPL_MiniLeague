@@ -38,7 +38,7 @@ _TOOLS_RAW = [
     },
     {
         "name": "get_standings",
-        "description": "Return overall, gameweek or monthly standings. kind must be 'overall', 'gameweek' or 'monthly'.",
+        "description": "Return overall, gameweek or monthly standings. kind must be 'overall', 'gameweek' or 'monthly'. If the gameweek number, month is not provided, the most recent gameweek or month will be used. Always call this for any standings request.",
         "parameters": {"kind": "string", "gw": "optional integer", "month": "optional string"},
     },
     {
