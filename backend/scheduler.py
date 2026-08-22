@@ -135,7 +135,7 @@ async def announce_gameweek_results(telegram_app) -> None:
         deadline_dt = _parse_deadline(deadline)
         if gw.get("finished") and deadline_dt < now_utc:
             agent = OllamaAgent()
-            response = await agent.chat(f"Summarise gameweek {gw['id']} results and top performers")
+            response = await agent.chat(f"Summarise gameweek {gw['id']} results, top performers and winner(s)")
             await _send_to_active_chats(telegram_app, response.reply, "gw_results", f"gw_{gw['id']}")
             return
 
@@ -153,7 +153,7 @@ async def announce_monthly_results(telegram_app) -> None:
             rows = await get_standings("monthly", month=month_name)
             if rows.get("standings"):
                 agent = OllamaAgent()
-                response = await agent.chat(f"Summarise the {month_name} monthly standings")
+                response = await agent.chat(f"Summarise the {month_name} monthly standings, top performers and winner(s)")
                 await _send_to_active_chats(telegram_app, response.reply, "monthly_results", f"month_{month_name}")
             return
 

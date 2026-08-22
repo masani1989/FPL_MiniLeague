@@ -39,7 +39,7 @@ async def get_overall_standings(season_id: str = config.SEASON_ID, league_id: in
     league_id = league_id or _league_id()
     response = (
         await client.table("overall_standings")
-        .select("player_name,rank,points,last_rank")
+        .select("player_name,rank,points,last_rank,manager_id")
         .eq("season_id", season_id)
         .order("rank")
         .execute()
