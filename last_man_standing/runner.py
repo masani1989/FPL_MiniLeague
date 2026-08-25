@@ -63,6 +63,11 @@ async def run_lms_for_gw(
 
     contest = await ensure_contest(season_id, league_id)
     contest_id = contest["id"]
+
+    # Do not re-score a gameweek that has already been processed.
+    if contest.get("current_gw") is not None and gw <= contest["current_gw"]:
+        return {"status": "skipped", "reason": "gameweek already processed", "gw": gw}
+    
     client = client or FPLClient()
 
     # Step 2: gameweek must exist in the local DB.
@@ -207,7 +212,6 @@ async def backfill_lms(
         for e in events
         if e["finished"] and from_gw <= e["id"] <= to_gw and e["id"] not in SKIP_GWS
     )
-
     results: list[dict] = []
     for gw in finished_gws:
         results.append(await run_lms_for_gw(gw, season_id=season_id, client=client))
