@@ -155,19 +155,29 @@ with tab_fixtures:
             if default_gw not in finished_gws:
                 default_gw = finished_gws[-1]
             selected_gw = st.selectbox(
-                "Select Gameweek",
+                "Matchday",
                 options=finished_gws,
                 index=finished_gws.index(default_gw),
-                label_visibility="collapsed",
             )
 
             fixtures = db.load_cc_fixtures(season_id, selected_gw)
             if fixtures.empty:
                 st.write(f"No Continental Conquest fixtures for Gameweek {selected_gw}.")
             else:
-                st.dataframe(fixtures, use_container_width=True, hide_index=True)
-                played = (fixtures["Result"] != "-").sum()
-                st.caption(f"Played: **{played}** / {len(fixtures)} matches")
+                fixture_groups = sorted(fixtures["Group"].dropna().unique())
+                selected_group = st.selectbox(
+                    "Group",
+                    options=["All"] + fixture_groups,
+                    index=0,
+                )
+                display_fixtures = (
+                    fixtures if selected_group == "All"
+                    else fixtures[fixtures["Group"] == selected_group].reset_index(drop=True)
+                )
+                st.dataframe(display_fixtures, use_container_width=True, hide_index=True)
+                played = (display_fixtures["Result"] != "-").sum()
+                total = len(display_fixtures)
+                st.caption(f"Showing **{total}** matches | Played: **{played}** / {total}")
 
 
 # ---------------------------------------------------------------------------

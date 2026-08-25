@@ -111,6 +111,7 @@ async def run_league_gw(gw: int, season_id: str = config.SEASON_ID,
 
     matches = await db.get_cc_matches_for_gw(contest["id"], gw)
     if not matches:
+        print(f"run_league_gw: no matches for contest {contest['id']} in GW{gw}")
         return {"status": "skipped", "reason": "no league matches for gw", "gw": gw}
 
     members = {m["manager_id"]: m for m in await db.get_cc_group_members(contest["id"])}
@@ -141,6 +142,10 @@ async def run_league_gw(gw: int, season_id: str = config.SEASON_ID,
             "played": True,
         })
         scored += 1
+
+    # Recompute and persist group standings so they stay current every GW.
+    touched_group_ids = {m["group_id"] for m in matches}
+    await _persist_group_standings(contest["id"], touched_group_ids)
     return {"status": "ok", "gw": gw, "matches_scored": scored}
 
 
@@ -151,24 +156,24 @@ def _result_row_to_matchresult(row: dict) -> MatchResult:
     )
 
 
-async def finalize_groups(season_id: str = config.SEASON_ID, league_id: int = config.FPL_LEAGUE_ID) -> dict:
-    contest = await ensure_contest(season_id, league_id)
-    if contest.get("phase") not in ("league",):
-        return {"status": "skipped", "reason": "not in league phase"}
-    groups = await db.get_cc_groups(contest["id"])
+async def _persist_group_standings(contest_id: int, group_ids: set[int] | None = None) -> dict[int, list]:
+    """Recompute and persist cc_standings for the given groups (or all groups)."""
+    groups = await db.get_cc_groups(contest_id)
     ordered_by_group: dict[int, list] = {}
     for g in groups:
-        members_rows = await db.get_cc_group_members(contest["id"], g["id"])  # Ruling 6: per-group filter
+        if group_ids is not None and g["id"] not in group_ids:
+            continue
+        members_rows = await db.get_cc_group_members(contest_id, g["id"])  # Ruling 6: per-group filter
         members = [GroupMember(r["manager_id"], r["player_name"], r["team_name"], None)
                    for r in members_rows]
-        result_rows = await db.get_cc_league_results(contest["id"], g["id"])
+        result_rows = await db.get_cc_league_results(contest_id, g["id"])
         results = [_result_row_to_matchresult(r) for r in result_rows]
-        ordered = compute_group_standings(members, results, g["id"], contest["id"])
+        ordered = compute_group_standings(members, results, g["id"], contest_id)
         qual = qualification(ordered)
         ordered_by_group[g["id"]] = ordered
         for s in ordered:
             await db.upsert_cc_standing({
-                "contest_id": contest["id"], "group_id": g["id"], "manager_id": s.manager_id,
+                "contest_id": contest_id, "group_id": g["id"], "manager_id": s.manager_id,
                 "player_name": s.player_name, "team_name": s.team_name,
                 "played": s.played, "wins": s.wins, "draws": s.draws, "losses": s.losses,
                 "points": s.points, "score_for": s.score_for, "score_against": s.score_against,
@@ -176,6 +181,15 @@ async def finalize_groups(season_id: str = config.SEASON_ID, league_id: int = co
                 "clean_sheets": s.clean_sheets, "assists": s.assists, "bench_points": s.bench_points,
                 "group_rank": s.group_rank, "qualification": qual[s.manager_id],
             })
+    return ordered_by_group
+
+
+async def finalize_groups(season_id: str = config.SEASON_ID, league_id: int = config.FPL_LEAGUE_ID) -> dict:
+    contest = await ensure_contest(season_id, league_id)
+    if contest.get("phase") not in ("league",):
+        return {"status": "skipped", "reason": "not in league phase"}
+    groups = await db.get_cc_groups(contest["id"])
+    ordered_by_group = await _persist_group_standings(contest["id"])
 
     # group A vs B
     ga = next(v for k, v in ordered_by_group.items() if k == groups[0]["id"])

@@ -628,7 +628,7 @@ _LMS_GW_SCORES_COLUMNS = [
 _CC_STANDINGS_COLUMNS = [
     "Group", "Player", "Team", "P", "W", "D", "L", "Pts", "GF", "GA", "GD", "Qualification",
 ]
-_CC_FIXTURE_COLUMNS = ["Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
+_CC_FIXTURE_COLUMNS = ["Group", "Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
 _CC_TIE_COLUMNS = ["Competition", "Round", "Home", "Away", "Winner", "Resolved", "Note"]
 _CC_GROUP_COLUMNS = ["Group", "Player", "Team", "Seed Rank"]
 
@@ -791,7 +791,8 @@ def load_cc_groups(season_id: str = config.SEASON_ID) -> pd.DataFrame:
 def load_cc_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
     """Load group standings in the shape the UI expects.
 
-    Rows are ordered by group then points (desc) then score_for (desc).
+    Rows are ordered by group then points (desc), then goal difference (desc),
+    then goals scored (desc), then player name for deterministic ties.
     """
     contest = load_cc_contest(season_id)
     if contest is None:
@@ -808,9 +809,6 @@ def load_cc_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
         client.table("cc_standings")
         .select("*")
         .eq("contest_id", contest["id"])
-        .order("group_id")
-        .order("points", desc=True)
-        .order("score_for", desc=True)
         .execute()
     )
     df = pd.DataFrame(response.data)
@@ -823,22 +821,38 @@ def load_cc_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
         "wins": "W", "draws": "D", "losses": "L", "points": "Pts",
         "score_for": "GF", "score_against": "GA", "qualification": "Qualification",
     })
+    df = df.sort_values(
+        by=["Group", "Pts", "GD", "GF", "Player"],
+        ascending=[True, False, False, False, True],
+        ignore_index=True,
+    )
     return df[_CC_STANDINGS_COLUMNS]
 
 
 @st.cache_data(ttl=300)
 def load_cc_fixtures(season_id: str, gw: int) -> pd.DataFrame:
-    """Load a gameweek's matches (league + knockout) in the shape the UI expects."""
+    """Load a gameweek's matches (league + knockout) in the shape the UI expects.
+
+    Includes a Group column: group name for league fixtures, "-" for knockouts.
+    """
     contest = load_cc_contest(season_id)
     if contest is None:
         return pd.DataFrame(columns=_CC_FIXTURE_COLUMNS)
     client = get_client()
     name_map = _cc_name_map(client, contest["id"])
+    groups = (
+        client.table("cc_groups")
+        .select("*")
+        .eq("contest_id", contest["id"])
+        .execute()
+    )
+    group_name = {g["id"]: g["name"] for g in groups.data}
     response = (
         client.table("cc_matches")
         .select("*")
         .eq("contest_id", contest["id"])
         .eq("gameweek", gw)
+        .order("group_id")
         .order("phase")
         .order("round")
         .order("leg")
@@ -847,6 +861,11 @@ def load_cc_fixtures(season_id: str, gw: int) -> pd.DataFrame:
     df = pd.DataFrame(response.data)
     if df.empty:
         return pd.DataFrame(columns=_CC_FIXTURE_COLUMNS)
+    df["Group"] = (
+        df["group_id"].map(group_name)
+        if "group_id" in df.columns
+        else "-"
+    )
     df["Home"] = df["home_manager_id"].map(lambda i: name_map.get(i, ("?", ""))[0])
     df["Away"] = df["away_manager_id"].map(lambda i: name_map.get(i, ("?", ""))[0])
 

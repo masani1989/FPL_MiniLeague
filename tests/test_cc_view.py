@@ -141,7 +141,7 @@ def test_load_cc_fixtures_returns_expected_columns(monkeypatch):
                                                  "cc_matches": matches}))
 
     df = supabase_conn.load_cc_fixtures("2026-27", 5)
-    assert list(df.columns) == ["Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
+    assert list(df.columns) == ["Group", "Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
     assert len(df) == 1
     row = df.iloc[0]
     assert row["Home"] == "Alpha"
@@ -173,7 +173,7 @@ def test_load_cc_fixtures_no_contest_returns_empty(monkeypatch):
     monkeypatch.setattr(supabase_conn, "get_client",
                         lambda: _make_cc_client({"cc_contest": []}))
     df = supabase_conn.load_cc_fixtures("2026-27", 5)
-    assert list(df.columns) == ["Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
+    assert list(df.columns) == ["Group", "Phase", "Round", "Leg", "Home", "Away", "Score", "Result"]
     assert df.empty
 
 
