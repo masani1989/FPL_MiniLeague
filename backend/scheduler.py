@@ -201,8 +201,50 @@ async def announce_lms_elimination(telegram_app) -> None:
     await _send_to_active_chats(telegram_app, text, "lms_elimination", f"gw_{recent_gw}")
 
 
+async def _cc_match_grid(matches: list[dict], recent_gw: int) -> str:
+    """Format played matches for this GW as a Telegram-friendly grid."""
+    lines: list[str] = []
+    for m in matches:
+        home = m.get("home_manager_name") or m.get("home_team_name") or "Home"
+        away = m.get("away_manager_name") or m.get("away_team_name") or "Away"
+        home_score = m.get("home_score")
+        away_score = m.get("away_score")
+        if home_score is None or away_score is None:
+            continue
+        lines.append(f"{home} {home_score} - {away_score} {away}")
+    return "\n".join(lines) if lines else "No matches recorded."
+
+
+async def _cc_group_standings_snippet(contest_id: int) -> str:
+    """Return the latest group standings (Group A and Group B) as a short table."""
+    groups = await db.get_cc_groups(contest_id)
+    if not groups:
+        return ""
+    # Resolve stable A/B ordering by id if possible, otherwise by name.
+    groups = sorted(groups, key=lambda g: (g.get("name", ""), g.get("id", 0)))
+    sections: list[str] = []
+    for g in groups:
+        rows = await db.get_cc_standings(contest_id, g["id"])
+        if not rows:
+            continue
+        rows = sorted(rows, key=lambda r: r.get("group_rank", 0) or 0)
+        name = g.get("name", "Group")
+        sections.append(f"📊 {name}")
+        for r in rows:
+            rank = r.get("group_rank", "-")
+            player = r.get("player_name") or r.get("team_name") or "Player"
+            p = r.get("played", 0)
+            pts = r.get("points", 0)
+            gf = r.get("score_for", 0)
+            ga = r.get("score_against", 0)
+            qual = r.get("qualification") or ""
+            q_emoji = " ✅" if qual and "ucl" in qual.lower() else " 🟠" if qual else " ❌"
+            sections.append(f"{rank}. {player} — {p}P {pts}PTS ({gf}-{ga}){q_emoji}")
+    return "\n".join(sections)
+
+
 async def announce_cc_round(telegram_app) -> None:
-    """Run Continental Conquest for the most-recent finished GW and post a short summary.
+    """Run Continental Conquest for the most-recent finished GW and post a detailed summary.
 
     League (gw<=31) scores matches; knockout (gw>=32) scores legs and resolves ties
     (finalizing the group phase at gw 32 first). Announces only when matches were
@@ -224,5 +266,29 @@ async def announce_cc_round(telegram_app) -> None:
     matches_played = summary.get("matches_scored", 0)
     if not matches_played:
         return
-    text = f"⚽ Continental Conquest — Gameweek {recent_gw}: {matches_played} match(es) played."
+
+    contest_id = summary.get("contest_id")
+    if not contest_id:
+        contest = await db.get_cc_contest(config.SEASON_ID, config.FPL_LEAGUE_ID)
+        contest_id = contest["id"] if contest else None
+
+    matches = []
+    if contest_id:
+        matches = [
+            m
+            for m in await db.get_cc_matches_for_gw(contest_id, recent_gw)
+            if m.get("played")
+        ]
+
+    header = f"⚽ Continental Conquest — Gameweek {recent_gw}"
+    subheader = f"{matches_played} match(es) played"
+    grid = await _cc_match_grid(matches, recent_gw)
+
+    parts = [header, subheader, "", "🗓️ Results:", grid]
+    if recent_gw <= 31 and contest_id:
+        standings = await _cc_group_standings_snippet(contest_id)
+        if standings:
+            parts.extend(["", "🏆 Standings:", standings])
+
+    text = "\n".join(parts)
     await _send_to_active_chats(telegram_app, text, "cc_round", f"gw_{recent_gw}")
