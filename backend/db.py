@@ -469,12 +469,29 @@ async def upsert_cc_group_member(
 
 async def get_cc_group_members(contest_id: int, group_id: int | None = None) -> list[dict]:
     """Return group members for a contest, optionally filtered to a single group."""
+    # client = await get_client()
+    # q = client.table("cc_group_members").select("*").eq("contest_id", contest_id)
+    # if group_id is not None:
+    #     q = q.eq("group_id", group_id)
+    # response = await q.execute()
+    # return _to_records(response)
+
     client = await get_client()
-    q = client.table("cc_group_members").select("*").eq("contest_id", contest_id)
+    q = (
+        client.table("cc_group_members")
+        .select("*, managers(fpl_entry_id)")
+        .eq("cc_group_members.contest_id", contest_id)
+    )
     if group_id is not None:
         q = q.eq("group_id", group_id)
     response = await q.execute()
-    return _to_records(response)
+    records = _to_records(response)
+    # Flatten the nested managers object so callers see a plain fpl_entry_id key.
+    for r in records:
+        managers = r.pop("managers", None)
+        if isinstance(managers, dict):
+            r["fpl_entry_id"] = managers.get("fpl_entry_id")
+    return records
 
 
 async def get_cc_groups(contest_id: int) -> list[dict]:

@@ -220,7 +220,12 @@ async def run_knockout_gw(gw: int, season_id: str = config.SEASON_ID,
     members = {m["manager_id"]: m for m in await db.get_cc_group_members(contest["id"])}
     matches = await db.get_cc_matches_for_gw(contest["id"], gw)   # unplayed, any phase
     live = await client.get_gw_live(gw)
-    live_elements = live.get("elements", {})
+    raw_elements = live.get("elements", {})
+    if isinstance(raw_elements, list):
+        live_elements = {e.get("id"): e for e in raw_elements if isinstance(e, dict) and e.get("id") is not None}
+    else:
+        live_elements = raw_elements if isinstance(raw_elements, dict) else {}
+    # live_elements = live.get("elements", {})
     scored = 0
     touched: set[tuple[str, str]] = set()
     for m in matches:

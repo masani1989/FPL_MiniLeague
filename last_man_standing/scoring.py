@@ -22,6 +22,8 @@ def _lookup_live(element: int, live_elements: dict) -> dict:
     on the source. Try the string form first, then fall back to the int form.
     Returns an empty dict if the element is absent (player didn't play etc.).
     """
+    if not isinstance(live_elements, dict):
+        return {}
     entry = live_elements.get(str(element))
     if entry is None:
         entry = live_elements.get(element)

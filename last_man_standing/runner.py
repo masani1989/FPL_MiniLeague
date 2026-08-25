@@ -90,7 +90,12 @@ async def run_lms_for_gw(
 
     # Step 5-6: fetch live elements once, compute each alive manager's score.
     live = await client.get_gw_live(gw)
-    live_elements = live.get("elements", {})
+    raw_elements = live.get("elements", {})
+    if isinstance(raw_elements, list):
+        live_elements = {e.get("id"): e for e in raw_elements if isinstance(e, dict) and e.get("id") is not None}
+    else:
+        live_elements = raw_elements if isinstance(raw_elements, dict) else {}
+    # live_elements = live.get("elements", {})
 
     scores = []
     for m in alive:
