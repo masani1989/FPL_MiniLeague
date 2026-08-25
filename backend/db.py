@@ -476,22 +476,37 @@ async def get_cc_group_members(contest_id: int, group_id: int | None = None) -> 
     # response = await q.execute()
     # return _to_records(response)
 
+    # client = await get_client()
+    # q = (
+    #     client.table("cc_group_members")
+    #     .select("*, managers(fpl_entry_id)")
+    #     .eq("cc_group_members.contest_id", contest_id)
+    # )
+    # if group_id is not None:
+    #     q = q.eq("group_id", group_id)
+    # response = await q.execute()
+    # records = _to_records(response)
+    # # Flatten the nested managers object so callers see a plain fpl_entry_id key.
+    # for r in records:
+    #     managers = r.pop("managers", None)
+    #     if isinstance(managers, dict):
+    #         r["fpl_entry_id"] = managers.get("fpl_entry_id")
+    # return records
+
     client = await get_client()
-    q = (
-        client.table("cc_group_members")
-        .select("*, managers(fpl_entry_id)")
-        .eq("cc_group_members.contest_id", contest_id)
-    )
+    q = client.table("cc_group_members").select("*").eq("contest_id", contest_id)
     if group_id is not None:
         q = q.eq("group_id", group_id)
     response = await q.execute()
-    records = _to_records(response)
-    # Flatten the nested managers object so callers see a plain fpl_entry_id key.
-    for r in records:
-        managers = r.pop("managers", None)
-        if isinstance(managers, dict):
-            r["fpl_entry_id"] = managers.get("fpl_entry_id")
-    return records
+    rows = _to_records(response)
+    if not rows:
+        return []
+    manager_ids = [r["manager_id"] for r in rows]
+    managers_resp = await client.table("managers").select("id,fpl_entry_id").in_("id", manager_ids).execute()
+    entry_by_id = {m["id"]: m["fpl_entry_id"] for m in _to_records(managers_resp)}
+    for r in rows:
+        r["fpl_entry_id"] = entry_by_id.get(r["manager_id"])
+    return rows
 
 
 async def get_cc_groups(contest_id: int) -> list[dict]:
