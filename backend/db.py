@@ -539,7 +539,24 @@ async def get_cc_matches_for_gw(contest_id: int, gw: int) -> list[dict]:
         .eq("gameweek", gw)
         .execute()
     )
-    return _to_records(response)
+    rows = _to_records(response)
+
+    if not rows:
+        return []
+    home_manager_ids = [r["home_manager_id"] for r in rows]
+    away_manager_ids = [r["away_manager_id"] for r in rows]
+    manager_ids = home_manager_ids + away_manager_ids
+
+    managers_resp = await client.table("managers").select("id,fpl_entry_id,player_name,team_name").in_("id", manager_ids).execute()
+    entry_by_id = {m["id"]: [m["fpl_entry_id"], m["player_name"], m["team_name"]] for m in _to_records(managers_resp)}
+    for r in rows:
+        home_entry = entry_by_id.get(r["home_manager_id"]) or [None, None, None]
+        away_entry = entry_by_id.get(r["away_manager_id"]) or [None, None, None]
+        r["home_manager_name"] = home_entry[1]
+        r["home_manager_team"] = home_entry[2]
+        r["away_manager_name"] = away_entry[1]
+        r["away_manager_team"] = away_entry[2]
+    return rows
 
 
 async def get_cc_league_results(contest_id: int, group_id: int) -> list[dict]:
@@ -683,3 +700,15 @@ async def complete_league_phase(contest_id: int) -> None:
     await client.table("cc_contest").update(
         {"status": "knockouts", "phase": "ucl"}
     ).eq("id", contest_id).execute()
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def main():
+        contest = await get_cc_matches_for_gw(1, 1)
+        # print("CC contest:", contest)
+        #beautify list of json
+        import json
+        print(json.dumps(contest, indent=2))
+
+    asyncio.run(main())

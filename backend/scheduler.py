@@ -205,13 +205,13 @@ async def _cc_match_grid(matches: list[dict], recent_gw: int) -> str:
     """Format played matches for this GW as a Telegram-friendly grid."""
     lines: list[str] = []
     for m in matches:
-        home = m.get("home_manager_name") or m.get("home_team_name") or "Home"
-        away = m.get("away_manager_name") or m.get("away_team_name") or "Away"
+        home = (m.get("home_manager_name") or "Home Team").split()[0] + " " + (m.get("home_manager_name") or "Home Team").split()[1][0]
+        away = (m.get("away_manager_name") or "Away Team").split()[0] + " " + (m.get("away_manager_name") or "Away Team").split()[1][0]
         home_score = m.get("home_score")
         away_score = m.get("away_score")
         if home_score is None or away_score is None:
             continue
-        lines.append(f"{home} {home_score} - {away_score} {away}")
+        lines.append(f"{home} {' '*(12 - len(home))} {home_score} - {away_score} {away}")
     return "\n".join(lines) if lines else "No matches recorded."
 
 
@@ -229,7 +229,7 @@ async def _cc_group_standings_snippet(contest_id: int) -> str:
             continue
         rows = sorted(rows, key=lambda r: r.get("group_rank", 0) or 0)
         name = g.get("name", "Group")
-        sections.append(f"📊 {name}")
+        sections.append(f"\n📊 Group {name}")
         for r in rows:
             rank = r.get("group_rank", "-")
             player = r.get("player_name") or r.get("team_name") or "Player"
@@ -238,8 +238,8 @@ async def _cc_group_standings_snippet(contest_id: int) -> str:
             gf = r.get("score_for", 0)
             ga = r.get("score_against", 0)
             qual = r.get("qualification") or ""
-            q_emoji = " ✅" if qual and "ucl" in qual.lower() else " 🟠" if qual else " ❌"
-            sections.append(f"{rank}. {player} — {p}P {pts}PTS ({gf}-{ga}){q_emoji}")
+            q_emoji = " ✅" if qual and "ucl" in qual.lower() else " 🟠" if qual and "uel" in qual.lower() else " ❌"
+            sections.append(f"{rank}. {player.split()[0]+' '+player.split()[1][0]} {' '*((13 if rank>=10 else 14) - len(player.split()[0]+' '+player.split()[1][0]))} | {p}P {pts}PTS ({gf}-{ga}){q_emoji}")
     return "\n".join(sections)
 
 
@@ -284,11 +284,20 @@ async def announce_cc_round(telegram_app) -> None:
     subheader = f"{matches_played} match(es) played"
     grid = await _cc_match_grid(matches, recent_gw)
 
-    parts = [header, subheader, "", "🗓️ Results:", grid]
+    parts = [header, subheader, "", "🗓️ Results:\n", grid]
     if recent_gw <= 31 and contest_id:
         standings = await _cc_group_standings_snippet(contest_id)
         if standings:
-            parts.extend(["", "🏆 Standings:", standings])
+            parts.extend(["", "-"*40, "🏆 Standings:", standings])
 
     text = "\n".join(parts)
+    print(text)  # For debugging/logging purposes
     await _send_to_active_chats(telegram_app, text, "cc_round", f"gw_{recent_gw}")
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def main():
+        await announce_cc_round("test")
+
+    asyncio.run(main())
