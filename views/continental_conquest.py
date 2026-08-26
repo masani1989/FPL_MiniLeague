@@ -142,9 +142,10 @@ with tab_fixtures:
         st.info("No Continental Conquest contest has been set up for this season yet.")
     else:
         finished_gws = []
+
         try:
             events = gwk.get_gameweek_data()["events"]
-            finished_gws = sorted([e["id"] for e in events if e.get("finished")])
+            finished_gws = sorted([e["id"] for e in events])[:26]# if e.get("finished")])
         except Exception:
             finished_gws = []
 
@@ -156,11 +157,11 @@ with tab_fixtures:
                 default_gw = finished_gws[-1]
             selected_gw = st.selectbox(
                 "Matchday",
-                options=finished_gws,
-                index=finished_gws.index(default_gw),
+                options=["All"] + [str(gw) for gw in finished_gws],
+                index=finished_gws.index(default_gw)
             )
 
-            fixtures = db.load_cc_fixtures(season_id, selected_gw)
+            fixtures = db.load_cc_fixtures(season_id, int(selected_gw) if selected_gw != "All" else None)
             if fixtures.empty:
                 st.write(f"No Continental Conquest fixtures for Gameweek {selected_gw}.")
             else:
@@ -170,13 +171,27 @@ with tab_fixtures:
                     options=["All"] + fixture_groups,
                     index=0,
                 )
+
+                # dropdown filter for players
+                players = sorted(fixtures["Home"].dropna().unique()) if selected_group == "All" else sorted(fixtures[fixtures["Group"] == selected_group]["Home"].dropna().unique())
+                selected_player = st.selectbox(
+                    "Player",
+                    options=["All"] + players,
+                    index=0,
+                )
+
                 display_fixtures = (
                     fixtures if selected_group == "All"
                     else fixtures[fixtures["Group"] == selected_group].reset_index(drop=True)
                 )
-                st.dataframe(display_fixtures, use_container_width=True, hide_index=True)
-                played = (display_fixtures["Result"] != "-").sum()
-                total = len(display_fixtures)
+
+                final_fixtures = (display_fixtures if selected_player == "All" 
+                                  else display_fixtures[(display_fixtures["Home"] == selected_player) 
+                                                        | (display_fixtures["Away"] == selected_player)]).sort_values(by=["Round"], key=lambda col: col.str.extract(r"(\d+)")[0].astype(int)).reset_index(drop=True)
+
+                st.dataframe(final_fixtures, use_container_width=True, hide_index=True)
+                played = (final_fixtures["Result"] != "-").sum()
+                total = len(final_fixtures)
                 st.caption(f"Showing **{total}** matches | Played: **{played}** / {total}")
 
 

@@ -830,7 +830,7 @@ def load_cc_standings(season_id: str = config.SEASON_ID) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
-def load_cc_fixtures(season_id: str, gw: int) -> pd.DataFrame:
+def load_cc_fixtures(season_id: str, gw: int = None) -> pd.DataFrame:
     """Load a gameweek's matches (league + knockout) in the shape the UI expects.
 
     Includes a Group column: group name for league fixtures, "-" for knockouts.
@@ -847,17 +847,30 @@ def load_cc_fixtures(season_id: str, gw: int) -> pd.DataFrame:
         .execute()
     )
     group_name = {g["id"]: g["name"] for g in groups.data}
-    response = (
-        client.table("cc_matches")
-        .select("*")
-        .eq("contest_id", contest["id"])
-        .eq("gameweek", gw)
-        .order("group_id")
-        .order("phase")
-        .order("round")
-        .order("leg")
-        .execute()
-    )
+
+    if gw is not None:
+        response = (
+            client.table("cc_matches")
+            .select("*")
+            .eq("contest_id", contest["id"])
+            .eq("gameweek", gw)
+            .order("group_id")
+            .order("phase")
+            .order("round")
+            .order("leg")
+            .execute()
+        )
+    else:
+        response = (
+            client.table("cc_matches")
+            .select("*")
+            .eq("contest_id", contest["id"])
+            .order("group_id")
+            .order("phase")
+            .order("round")
+            .order("leg")
+            .execute()
+        )
     df = pd.DataFrame(response.data)
     if df.empty:
         return pd.DataFrame(columns=_CC_FIXTURE_COLUMNS)
@@ -871,8 +884,8 @@ def load_cc_fixtures(season_id: str, gw: int) -> pd.DataFrame:
 
     def _score(row):
         if not row.get("played"):
-            return "vs"
-        return f"{row['home_score']} - {row['away_score']}"
+            return "-"
+        return f"{int(row['home_score'])} - {int(row['away_score'])}"
 
     def _result(row):
         if not row.get("played"):
