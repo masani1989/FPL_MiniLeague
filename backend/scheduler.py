@@ -8,6 +8,7 @@ from backend.agent import OllamaAgent
 from backend.fpl_client import FPLClient
 from backend.gameweek import get_phases, get_recent_completed_gameweek
 from backend.tools.mini_league import get_standings
+from backend.tools.continental_conquest import get_cc_fixtures
 from last_man_standing.runner import run_lms_for_gw
 from continental_conquest.runner import run_league_gw, run_knockout_gw, finalize_groups
 
@@ -66,6 +67,14 @@ def start_scheduler(telegram_app) -> None:
         id="announce_cc_round",
         replace_existing=True,
     )
+    scheduler.add_job(
+        announce_cc_fixtures,
+        "cron",
+        minute="37",
+        args=(telegram_app,),
+        id="announce_cc_fixtures",
+        replace_existing=True,
+    )
     scheduler.start()
 
 
@@ -91,7 +100,6 @@ async def _send_to_active_chats(telegram_app, text: str, kind: str, trigger_key:
         except Exception:
             # Log and continue; do not crash the scheduler.
             pass
-
 
 def _parse_deadline(deadline: str) -> datetime:
     return datetime.fromisoformat(deadline.replace("Z", "+00:00"))
@@ -207,11 +215,11 @@ async def _cc_match_grid(matches: list[dict], recent_gw: int) -> str:
     for m in matches:
         home = (m.get("home_manager_name") or "Home Team").split()[0] + " " + (m.get("home_manager_name") or "Home Team").split()[1][0]
         away = (m.get("away_manager_name") or "Away Team").split()[0] + " " + (m.get("away_manager_name") or "Away Team").split()[1][0]
-        home_score = m.get("home_score")
-        away_score = m.get("away_score")
-        if home_score is None or away_score is None:
-            continue
-        lines.append(f"{home} {' '*(12 - len(home))} {home_score} - {away_score} {away}")
+        home_score = "" if m.get("home_score") is None else m.get("home_score")
+        away_score = "" if m.get("away_score") is None else m.get("away_score")
+        # if home_score is None or away_score is None:
+        #     continue
+        lines.append(f"{home} {' '*(12 - len(home))} {home_score} vs {away_score} {away}")
     return "\n".join(lines) if lines else "No matches recorded."
 
 
@@ -294,10 +302,32 @@ async def announce_cc_round(telegram_app) -> None:
     print(text)  # For debugging/logging purposes
     await _send_to_active_chats(telegram_app, text, "cc_round", f"gw_{recent_gw}")
 
+async def announce_cc_fixtures(telegram_app) -> None:
+    """Announce the fixtures for the next GW of Continental Conquest."""
+    if telegram_app is None:
+        return
+    recent_gw, is_finished = await get_recent_completed_gameweek()
+    if not is_finished or not recent_gw:
+        return
+    next_gw = recent_gw + 1
+    contest = await db.get_cc_contest(config.SEASON_ID, config.FPL_LEAGUE_ID)
+    if not contest:
+        return
+    print(f"Fetching CC fixtures for GW {next_gw}...")
+    matches = await get_cc_fixtures(next_gw)
+    if not matches:
+        return
+
+    header = f"⚽ Continental Conquest — Gameweek {next_gw} Fixtures"
+    grid = await _cc_match_grid(matches.get("matches"), next_gw)
+    text = "\n".join([header, "", "🗓️ Fixtures:\n", grid])
+
+    await _send_to_active_chats(telegram_app, text, "upcoming_cc_fixtures", f"gw_{next_gw}")
+
 if __name__ == "__main__":
     import asyncio
 
     async def main():
-        await announce_cc_round("test")
+        await announce_cc_fixtures("test")
 
     asyncio.run(main())

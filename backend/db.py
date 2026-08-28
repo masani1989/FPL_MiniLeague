@@ -314,7 +314,7 @@ async def get_lms_alive_managers(contest_id: int) -> list[dict]:
             "player_name": r["player_name"],
             "team_name": r["team_name"],
         }
-        for r in rows
+        for r in rows if entry_by_id.get(r["manager_id"]) != 9896218  # Exclude the test manager with fpl_entry_id "AkS"
     ]
 
 
