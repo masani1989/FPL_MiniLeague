@@ -34,6 +34,7 @@ async def ensure_contest(
     if not contest or "id" not in contest:
         contest = await db.get_lms_contest(season_id, league_id)
     managers = await db.get_managers(league_id)
+    managers.remove(next(m for m in managers if m["fpl_entry_id"] == 9896218))
     for manager in managers:
         await db.upsert_lms_standing(
             contest["id"],
