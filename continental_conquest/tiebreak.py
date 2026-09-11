@@ -13,6 +13,9 @@ def _stat_sort_key(stats: dict) -> tuple:
     assists DESC, bench_points DESC.
     """
     return (
+        -stats.get("score_diff", 0),
+        -stats.get("score_for", 0),
+        stats.get("score_against", 0),
         -stats.get("goals_scored", 0),
         stats.get("goals_conceded", 0),
         -stats.get("clean_sheets", 0),
@@ -88,11 +91,13 @@ def _stat_note(winner_stats: dict, loser_stats: dict) -> str:
 
 
 def order_group_standings(standings: list[GroupStanding], contest_id: int) -> list[GroupStanding]:
-    """Rank within a group: points -> score_diff -> stat chain -> coin toss."""
+    """Rank within a group: points -> score_diff -> score_for -> score_against -> stat chain -> coin toss."""
     def key(s: GroupStanding):
         return (
             -s.points,
             -(s.score_for - s.score_against),
+            -s.score_for,
+            s.score_against,   # ASC: fewer points conceded is better
             -s.goals_scored,
             -s.clean_sheets,
             -s.assists,

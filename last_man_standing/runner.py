@@ -106,6 +106,7 @@ async def run_lms_for_gw(
     scores = []
     for m in alive:
         picks = await client.get_entry_picks(m["fpl_entry_id"], gw)
+        picks_transfer_cost = picks.get("entry_history", {}).get("event_transfers_cost", 0)
         score = compute_manager_score(
             picks,
             live_elements,
@@ -113,6 +114,7 @@ async def run_lms_for_gw(
             m["fpl_entry_id"],
             m["player_name"],
             m["team_name"],
+            picks_transfer_cost=picks_transfer_cost
         )
         scores.append(score)
 

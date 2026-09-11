@@ -39,6 +39,7 @@ def compute_manager_score(
     fpl_entry_id: int,
     player_name: str,
     team_name: str,
+    picks_transfer_cost: int = 0,
 ) -> ManagerScore:
     """Compute a ManagerScore from a picks payload and live element stats.
 
@@ -86,7 +87,7 @@ def compute_manager_score(
             bench_points += base
 
     tiebreak = TiebreakStats(
-        first_xi_points=first_xi_points,
+        first_xi_points=first_xi_points - picks_transfer_cost,  # net score (transfer hits applied)
         goals_scored=goals_scored,
         goals_conceded=goals_conceded,
         clean_sheets=clean_sheets,

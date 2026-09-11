@@ -12,7 +12,7 @@ def league_score(picks_payload: dict) -> int:
     This is the value compared head-to-head to decide a league match.
     """
     eh = picks_payload.get("entry_history") or {}
-    return int(eh.get("points", 0))
+    return int(eh.get("points", 0) - eh.get("event_transfers_cost", 0))
 
 
 def knockout_score(picks_payload, live_elements, manager_id, fpl_entry_id, player_name, team_name) -> int:

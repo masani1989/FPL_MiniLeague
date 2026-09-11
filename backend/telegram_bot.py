@@ -75,27 +75,84 @@ def _parse_markdown_table(text: str) -> list[list[str]]:
     return rows
 
 
+def _looks_numeric(cell: str) -> bool:
+    """Return True for plain numbers (rankings, points, scores)."""
+    cleaned = str(cell).strip().replace(",", "").replace("%", "")
+    # Accept a leading '#' for ranks like '#1'.
+    if cleaned.startswith("#"):
+        cleaned = cleaned[1:]
+    if cleaned == "":
+        return False
+    try:
+        float(cleaned)
+        return True
+    except ValueError:
+        return False
+
+
+def _numeric_columns(rows: list[list[str]]) -> list[bool]:
+    """Mark columns whose body cells are mostly numeric as right-aligned."""
+    if not rows or len(rows) < 2:
+        return []
+    num_cols = max(len(row) for row in rows)
+    numeric = []
+    for col in range(num_cols):
+        body_cells = [row[col] for row in rows[1:] if col < len(row) and row[col].strip()]
+        if not body_cells:
+            numeric.append(False)
+            continue
+        numeric.append(sum(1 for c in body_cells if _looks_numeric(c)) / len(body_cells) >= 0.6)
+    return numeric
+
+
 def _render_table_image(text: str) -> io.BytesIO:
     rows = _parse_markdown_table(text)
     if not rows:
-        # No table found; return a tiny blank image so callers can still send a photo.
-        img = Image.new("RGB", (1, 1), "white")
+        # No table found; return a readable dark placeholder.
+        img = Image.new("RGB", (360, 90), "#121212")
+        draw = ImageDraw.Draw(img)
+        font = _load_font(size=16, bold=True)
+        msg = "No table found in the response"
+        bbox = font.getbbox(msg)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        draw.text(
+            ((360 - text_width) / 2, (90 - text_height) / 2 - bbox[1]),
+            msg,
+            fill="#E0E0E0",
+            font=font,
+        )
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
         return buf
 
-    header_font = _load_font(size=15, bold=True)
-    body_font = _load_font(size=14, bold=False)
-    cell_padding_x = 16
-    cell_padding_y = 12
-    min_row_height = 28
+    # Dark-mode FPL palette.
+    header_bg = "#38003C"        # Premier League purple
+    header_text = "#FFFFFF"
+    body_text = "#E8E8E8"
+    body_text_dim = "#A0A0A0"
+    accent_color = "#00FF85"     # Premier League lime
+    grid_color = "#2A2A2A"
+    alt_row_bg = "#1E1E1E"
+    canvas_bg = "#121212"
+    top_8_color = "#00FF85"      # green
+    next_4_color = "#FFA500"     # orange
+    bottom_color = "#FF4D4D"     # red
+
+    header_font = _load_font(size=16, bold=True)
+    body_font = _load_font(size=15, bold=False)
+    cell_padding_x = 18
+    cell_padding_y = 14
+    min_row_height = 34
+    accent_height = 6
+    margin = 20
 
     num_cols = max(len(row) for row in rows)
-    # Pad ragged rows so column math stays simple.
     normalized_rows = [row + [""] * (num_cols - len(row)) for row in rows]
+    right_align_cols = _numeric_columns(normalized_rows)
 
-    def cell_size(cell: str, col_index: int, is_header: bool) -> tuple[float, float]:
+    def cell_size(cell: str, is_header: bool) -> tuple[float, float]:
         font = header_font if is_header else body_font
         bbox = font.getbbox(str(cell))
         width = (bbox[2] - bbox[0]) + cell_padding_x * 2
@@ -108,32 +165,52 @@ def _render_table_image(text: str) -> io.BytesIO:
         is_header = row_index == 0
         max_height = min_row_height
         for col_index, cell in enumerate(row):
-            width, height = cell_size(cell, col_index, is_header)
+            width, height = cell_size(cell, is_header)
             col_widths[col_index] = max(col_widths[col_index], width)
             max_height = max(max_height, height)
         row_heights.append(max_height)
 
-    margin = 16
-    img_width = int(sum(col_widths)) + margin * 2
-    img_height = int(sum(row_heights)) + margin * 2
+    table_width = sum(col_widths)
+    table_height = sum(row_heights)
+    img_width = int(table_width) + margin * 2
+    img_height = int(table_height) + margin * 2 + accent_height
 
-    img = Image.new("RGB", (img_width, img_height), "white")
+    img = Image.new("RGB", (img_width, img_height), canvas_bg)
     draw = ImageDraw.Draw(img)
 
-    header_bg = "#1F4E78"
-    header_text = "white"
-    body_text = "#222222"
-    grid_color = "#AAAAAA"
-    alt_row_bg = "#F7F7F7"
+    # Top accent bar.
+    draw.rectangle([margin, margin, img_width - margin, margin + accent_height], fill=accent_color)
 
-    y = margin
+    def _rank_for_row(row_index: int, row: list[str]) -> int | None:
+        """Try to infer a 1-based standing/rank from the first numeric body column."""
+        if row_index == 0:
+            return None
+        for col_index, cell in enumerate(row):
+            if col_index < len(right_align_cols) and right_align_cols[col_index]:
+                cleaned = str(cell).strip().lstrip("#")
+                try:
+                    return int(float(cleaned))
+                except ValueError:
+                    continue
+        return None
+
+    y = margin + accent_height
     for row_index, row in enumerate(normalized_rows):
         is_header = row_index == 0
         x = margin
         row_height = row_heights[row_index]
-        bg = header_bg if is_header else (alt_row_bg if row_index % 2 == 0 else "white")
-        # Fill the row background before drawing borders/text.
+        bg = header_bg if is_header else (alt_row_bg if row_index % 2 == 0 else canvas_bg)
         draw.rectangle([x, y, img_width - margin, y + row_height], fill=bg)
+
+        rank = _rank_for_row(row_index, row)
+        if rank is not None and 1 <= rank <= 8:
+            row_text_color = top_8_color
+        elif rank is not None and 9 <= rank <= 12:
+            row_text_color = next_4_color
+        elif rank is not None and rank >= 13:
+            row_text_color = bottom_color
+        else:
+            row_text_color = header_text if is_header else body_text
 
         for col_index, cell in enumerate(row):
             width = col_widths[col_index]
@@ -141,25 +218,36 @@ def _render_table_image(text: str) -> io.BytesIO:
             bbox = font.getbbox(str(cell))
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
-            text_x = x + (width - text_width) / 2
-            # Vertically center; bbox[1] is the offset from the top of the em-box.
+
+            if is_header or not right_align_cols[col_index]:
+                text_x = x + (width - text_width) / 2
+            else:
+                text_x = x + width - cell_padding_x - text_width
+
             text_y = y + (row_height - text_height) / 2 - bbox[1]
-            draw.text((text_x, text_y), str(cell), fill=header_text if is_header else body_text, font=font)
+            draw.text(
+                (text_x, text_y),
+                str(cell),
+                fill=row_text_color,
+                font=font,
+            )
             x += width
 
-        # Horizontal line below this row.
-        draw.line([margin, y + row_height, img_width - margin, y + row_height], fill=grid_color, width=1)
+        # Horizontal divider below this row.
+        draw.line(
+            [margin, y + row_height, img_width - margin, y + row_height],
+            fill=grid_color,
+            width=1,
+        )
         y += row_height
 
     # Vertical grid lines.
     x = margin
     for width in col_widths:
-        draw.line([x, margin, x, img_height - margin], fill=grid_color, width=1)
+        draw.line([x, margin + accent_height, x, img_height - margin], fill=grid_color, width=1)
         x += width
     # Closing right border.
-    draw.line([x, margin, x, img_height - margin], fill=grid_color, width=1)
-    # Top border.
-    draw.line([margin, margin, img_width - margin, margin], fill=grid_color, width=1)
+    draw.line([x, margin + accent_height, x, img_height - margin], fill=grid_color, width=1)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")

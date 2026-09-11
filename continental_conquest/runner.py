@@ -136,7 +136,7 @@ async def run_league_gw(gw: int, season_id: str = config.SEASON_ID,
             "group_id": m["group_id"], "tie_id": None,
             "home_manager_id": m["home_manager_id"], "away_manager_id": m["away_manager_id"],
             "home_score": hs, "away_score": as_,
-            "home_gross": hs, "away_gross": as_,   # net league score (gw_score - transfer_cost)
+            "home_gross": hp.get("points", 0), "away_gross": ap.get("points", 0),   # net league score (gw_score - transfer_cost)
             "result": result, "active_chip_home": hp.get("active_chip"),
             "active_chip_away": ap.get("active_chip"),
             "played": True,
@@ -248,8 +248,8 @@ async def run_knockout_gw(gw: int, season_id: str = config.SEASON_ID,
         hm, am = members[m["home_manager_id"]], members[m["away_manager_id"]]
         hp = await client.get_entry_picks(hm["fpl_entry_id"], gw)
         ap = await client.get_entry_picks(am["fpl_entry_id"], gw)
-        hs = knockout_score(hp, live_elements, hm["manager_id"], hm["fpl_entry_id"], hm["player_name"], hm["team_name"])
-        as_ = knockout_score(ap, live_elements, am["manager_id"], am["fpl_entry_id"], am["player_name"], am["team_name"])
+        hs = knockout_score(hp, live_elements, hm["manager_id"], hm["fpl_entry_id"], hm["player_name"], hm["team_name"]) - hp.get("event_transfers_cost", 0)
+        as_ = knockout_score(ap, live_elements, am["manager_id"], am["fpl_entry_id"], am["player_name"], am["team_name"]) - ap.get("event_transfers_cost", 0)
         await db.upsert_cc_fixture({
             "contest_id": contest["id"], "phase": m["phase"], "competition": m["competition"],
             "round": m["round"], "gameweek": gw, "leg": m["leg"], "tie_id": m["tie_id"],
