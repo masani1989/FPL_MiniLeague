@@ -31,6 +31,8 @@ KNOCKOUT_ROUNDS = {
 # these are the secondary keys.
 LEAGUE_TIEBREAK = (
     "score_diff",       # score_for - score_against
+    "score_for",        # raw total points scored
+    "score_against",    # fewer points conceded is better
     "goals_scored",
     "clean_sheets",
     "assists",
@@ -39,6 +41,9 @@ LEAGUE_TIEBREAK = (
 
 # Knockout tiebreak to pick the WINNER (aggregate already compared first).
 KNOCKOUT_TIEBREAK = (
+    "score_diff",       # score_for - score_against
+    "score_for",        # raw total points scored
+    "score_against",    # fewer points conceded is better
     "goals_scored",     # DESC
     "goals_conceded",   # ASC (fewer better)
     "clean_sheets",     # DESC

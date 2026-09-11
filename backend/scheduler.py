@@ -1,4 +1,5 @@
 """Scheduled announcements for the Telegram bot."""
+import io
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -11,6 +12,8 @@ from backend.tools.mini_league import get_standings
 from backend.tools.continental_conquest import get_cc_fixtures
 from last_man_standing.runner import run_lms_for_gw
 from continental_conquest.runner import run_league_gw, run_knockout_gw, finalize_groups
+
+from backend.telegram_bot import _render_table_image
 
 
 scheduler = AsyncIOScheduler()
@@ -83,7 +86,7 @@ def stop_scheduler() -> None:
         scheduler.shutdown()
 
 
-async def _send_to_active_chats(telegram_app, text: str, kind: str, trigger_key: str) -> None:
+async def _send_to_active_chats(telegram_app, text: str, kind: str, trigger_key: str, photos: list[io.BytesIO] | None = None) -> None:
     if telegram_app is None:
         return
     allowed = config.allowed_telegram_chat_ids()
@@ -95,7 +98,13 @@ async def _send_to_active_chats(telegram_app, text: str, kind: str, trigger_key:
         if await db.announcement_already_posted(chat_id, kind, trigger_key):
             continue
         try:
-            await telegram_app.bot.send_message(chat_id=chat_id, text=text[:4000])
+            if photos:
+                for idx, photo in enumerate(photos):
+                    photo.seek(0)
+                    caption = text[:1024] if idx == 0 else None
+                    await telegram_app.bot.send_photo(chat_id=chat_id, photo=photo, caption=caption)
+            else:
+                await telegram_app.bot.send_message(chat_id=chat_id, text=text[:4000])
             await db.log_announcement(chat_id, kind, trigger_key, text)
         except Exception:
             # Log and continue; do not crash the scheduler.
@@ -143,7 +152,12 @@ async def announce_gameweek_results(telegram_app) -> None:
         deadline_dt = _parse_deadline(deadline)
         if gw.get("finished") and deadline_dt < now_utc:
             agent = OllamaAgent()
-            response = await agent.chat(f"Summarise gameweek {gw['id']} results, top performers and winner(s)")
+            gw_res_prompt = f"Summarise gameweek {gw['id']} results. Announce winner(s) and top performers across each competition. " \
+                            f"For continental conquest, mention the key results which were either very close, a complete dominance or a nailbiting draw (it needs to hold significance and not necessary to give results under each category). Do not provide standings and all the results from the gameweek. " \
+                            f"For last man standing, mention the eliminated player and the number of survivors remaining. Do mention if the knockout was a close contest. " \
+                            f"Make it presenatable for whatsapp and telegram. Avoid long paragraphs." \
+                            " Use single * for bold. Do not use double ** or __ for bold."
+            response = await agent.chat(gw_res_prompt)
             await _send_to_active_chats(telegram_app, response.reply, "gw_results", f"gw_{gw['id']}")
             return
 
@@ -161,7 +175,10 @@ async def announce_monthly_results(telegram_app) -> None:
             rows = await get_standings("monthly", month=month_name)
             if rows.get("standings"):
                 agent = OllamaAgent()
-                response = await agent.chat(f"Summarise the {month_name} monthly standings, top performers and winner(s)")
+                mn_res_prompt = f"Summarise the {month_name} monthly standings, top performers and winner(s). " \
+                                f"Make it presenatable for whatsapp and telegram. Avoid long paragraphs." \
+                                " Use single * for bold. Do not use double ** or __ for bold."
+                response = await agent.chat(mn_res_prompt)
                 await _send_to_active_chats(telegram_app, response.reply, "monthly_results", f"month_{month_name}")
             return
 
@@ -179,7 +196,8 @@ async def pre_gameweek_suggestions(telegram_app) -> None:
         deadline_dt = _parse_deadline(deadline)
         if deadline_dt > now_utc and 0 < (deadline_dt - now_utc).total_seconds() <= 172800:
             agent = OllamaAgent()
-            response = await agent.chat(f"Give captain and transfer suggestions for gameweek {gw['id']}")
+            pre_gw_prompt = f"Give captain and transfer suggestions for gameweek {gw['id']}. Consider recent form, FDR, and upcoming fixtures. Format the response as a concise list of suggestions with brief reasoning for each. Make it presenatable for whatsapp and telegram. Avoid long paragraphs. Mention Fixture Difficulty Rating (FDR) for each player for next 5 games in the suggestions. Do not use double ** or __ for bold. Use single * for bold."
+            response = await agent.chat(pre_gw_prompt)
             await _send_to_active_chats(telegram_app, response.reply, "pre_gw_suggestions", f"gw_{gw['id']}")
             return
 
@@ -210,45 +228,52 @@ async def announce_lms_elimination(telegram_app) -> None:
 
 
 async def _cc_match_grid(matches: list[dict], recent_gw: int) -> str:
-    """Format played matches for this GW as a Telegram-friendly grid."""
-    lines: list[str] = []
+    """Format matches as a Markdown table for image rendering."""
+    if not matches:
+        return "No matches recorded."
+    lines = ["| Home | Score | Away |"]
     for m in matches:
-        home = (m.get("home_manager_name") or "Home Team").split()[0] + " " + (m.get("home_manager_name") or "Home Team").split()[1][0]
-        away = (m.get("away_manager_name") or "Away Team").split()[0] + " " + (m.get("away_manager_name") or "Away Team").split()[1][0]
-        home_score = "" if m.get("home_score") is None else m.get("home_score")
-        away_score = "" if m.get("away_score") is None else m.get("away_score")
-        # if home_score is None or away_score is None:
-        #     continue
-        lines.append(f"{home} {' '*(12 - len(home))} {home_score} vs {away_score} {away}")
-    return "\n".join(lines) if lines else "No matches recorded."
+        home = (m.get("home_manager_name") or "TBC").split()[0] + " " + (m.get("home_manager_name") or "TBC").split()[1][0]
+        away = (m.get("away_manager_name") or "TBC").split()[0] + " " + (m.get("away_manager_name") or "TBC").split()[1][0]
+        home_score = "" if m.get("home_score") is None else str(m["home_score"])
+        away_score = "" if m.get("away_score") is None else str(m["away_score"])
+        lines.append(f"| {home} | {home_score} - {away_score} | {away} |")
+    return "\n".join(lines)
 
 
-async def _cc_group_standings_snippet(contest_id: int) -> str:
-    """Return the latest group standings (Group A and Group B) as a short table."""
+async def _cc_group_standings_snippet(contest_id: int, group_name: str = None) -> str:
+    """Return the latest group standings as a single Markdown table."""
     groups = await db.get_cc_groups(contest_id)
     if not groups:
         return ""
     # Resolve stable A/B ordering by id if possible, otherwise by name.
     groups = sorted(groups, key=lambda g: (g.get("name", ""), g.get("id", 0)))
-    sections: list[str] = []
+    lines = ["| Rank | Player | P | PTS | GF-GA | Q |"]
     for g in groups:
         rows = await db.get_cc_standings(contest_id, g["id"])
         if not rows:
             continue
         rows = sorted(rows, key=lambda r: r.get("group_rank", 0) or 0)
-        name = g.get("name", "Group")
-        sections.append(f"\n📊 Group {name}")
+        name = g.get("name", "")
         for r in rows:
+            if group_name and name != group_name:
+                continue
             rank = r.get("group_rank", "-")
-            player = r.get("player_name") or r.get("team_name") or "Player"
+            player = (r.get("player_name") or r.get("team_name") or "Player").split()[0] + " " + (r.get("player_name") or r.get("team_name") or "Player").split()[1][0]
             p = r.get("played", 0)
             pts = r.get("points", 0)
             gf = r.get("score_for", 0)
             ga = r.get("score_against", 0)
             qual = r.get("qualification") or ""
-            q_emoji = " ✅" if qual and "ucl" in qual.lower() else " 🟠" if qual and "uel" in qual.lower() else " ❌"
-            sections.append(f"{rank}. {player.split()[0]+' '+player.split()[1][0]} {' '*((13 if rank>=10 else 14) - len(player.split()[0]+' '+player.split()[1][0]))} | {p}P {pts}PTS ({gf}-{ga}){q_emoji}")
-    return "\n".join(sections)
+            q = (
+                "UCL"
+                if qual and "ucl" in qual.lower()
+                else "UEL"
+                if qual and "uel" in qual.lower()
+                else "OUT"
+            )
+            lines.append(f"| {rank} | {player} | {p} | {pts} | {gf}-{ga} | {q} |")
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 async def announce_cc_round(telegram_app) -> None:
@@ -288,19 +313,42 @@ async def announce_cc_round(telegram_app) -> None:
             if m.get("played")
         ]
 
-    header = f"⚽ Continental Conquest — Gameweek {recent_gw}"
-    subheader = f"{matches_played} match(es) played"
+    header = f"🗓️ Results\n\nContinental Conquest — Gameweek {recent_gw}\n⚽ {matches_played} match(es) played"
     grid = await _cc_match_grid(matches, recent_gw)
 
-    parts = [header, subheader, "", "🗓️ Results:\n", grid]
-    if recent_gw <= 31 and contest_id:
-        standings = await _cc_group_standings_snippet(contest_id)
-        if standings:
-            parts.extend(["", "-"*40, "🏆 Standings:", standings])
+    photos: list[io.BytesIO] = []
+    results_photo = _render_table_image(f"🗓️ Results:\n{grid}")
+    if results_photo and results_photo.getbuffer().nbytes > 0:
+        photos.append(results_photo)
 
-    text = "\n".join(parts)
-    print(text)  # For debugging/logging purposes
-    await _send_to_active_chats(telegram_app, text, "cc_round", f"gw_{recent_gw}")
+    await _send_to_active_chats(telegram_app, header, "cc_round_results", f"gw_{recent_gw}", photos=photos)
+
+    groups = await db.get_cc_groups(contest_id) if contest_id else 0
+    group_names = [g.get("name", "") for g in groups] if groups else []
+
+    if recent_gw <= 31 and contest_id:
+        for i in group_names:
+            standings = await _cc_group_standings_snippet(contest_id, i)
+            if standings:
+                standings_photo = _render_table_image(f"🏆 Group {i} Standings:\n{standings}")
+                if standings_photo and standings_photo.getbuffer().nbytes > 0:
+                    photos: list[io.BytesIO] = []
+                    photos.append(standings_photo)
+                    await _send_to_active_chats(
+                        telegram_app, f"🏆 Group {i} Standings", f"cc_round_standings_{i}", f"gw_{recent_gw}_group_{i}", photos=photos
+                    )
+        # standings = await _cc_group_standings_snippet(contest_id)
+        # if standings:
+        #     standings_photo = _render_table_image(f"🏆 Standings:\n{standings}")
+        #     if standings_photo and standings_photo.getbuffer().nbytes > 0:
+        #         photos: list[io.BytesIO] = []
+        #         photos.append(standings_photo)
+
+    # if photos:
+    #     print("\n".join([header, grid]))  # For debugging/logging purposes
+    #     await _send_to_active_chats(
+    #         telegram_app, header, "cc_round", f"gw_{recent_gw}", photos=photos
+    #     )
 
 async def announce_cc_fixtures(telegram_app) -> None:
     """Announce the fixtures for the next GW of Continental Conquest."""
@@ -310,6 +358,19 @@ async def announce_cc_fixtures(telegram_app) -> None:
     if not is_finished or not recent_gw:
         return
     next_gw = recent_gw + 1
+    # announce only if next_gw deadline is within 2 days
+    client = FPLClient()
+    bootstrap = await client.get_bootstrap_static()
+    next_gw_data = next((gw for gw in bootstrap.get("events", []) if gw.get("id") == next_gw), None)
+    if not next_gw_data:
+        return
+    deadline = next_gw_data.get("deadline_time")
+    if not deadline:
+        return
+    deadline_dt = _parse_deadline(deadline)
+    now_utc = datetime.now(timezone.utc)
+    if not (0 < (deadline_dt - now_utc).total_seconds() <= 172800):
+        return
     contest = await db.get_cc_contest(config.SEASON_ID, config.FPL_LEAGUE_ID)
     if not contest:
         return
@@ -320,9 +381,14 @@ async def announce_cc_fixtures(telegram_app) -> None:
 
     header = f"⚽ Continental Conquest — Gameweek {next_gw} Fixtures"
     grid = await _cc_match_grid(matches.get("matches"), next_gw)
-    text = "\n".join([header, "", "🗓️ Fixtures:\n", grid])
+    photo = _render_table_image(f"🗓️ Fixtures:\n{grid}")
+    # save photo to file for debugging
+    # if photo and photo.getbuffer().nbytes > 0:
+    #     with open(f"cc_fixtures_gw_{next_gw}.png", "wb") as f:
+    #         f.write(photo.getbuffer())
 
-    await _send_to_active_chats(telegram_app, text, "upcoming_cc_fixtures", f"gw_{next_gw}")
+    if photo and photo.getbuffer().nbytes > 0:
+        await _send_to_active_chats(telegram_app, header, "upcoming_cc_fixtures", f"gw_{next_gw}", photos=[photo])
 
 if __name__ == "__main__":
     import asyncio

@@ -172,18 +172,27 @@ with tab_fixtures:
                     index=0,
                 )
 
-                # dropdown filter for players
-                players = sorted(fixtures["Home"].dropna().unique()) if selected_group == "All" else sorted(fixtures[fixtures["Group"] == selected_group]["Home"].dropna().unique())
-                selected_player = st.selectbox(
-                    "Player",
-                    options=["All"] + players,
-                    index=0,
-                )
+                # # dropdown filter for players
+                # players = sorted(fixtures["Home"].dropna().unique()) if selected_group == "All" else sorted(fixtures[fixtures["Group"] == selected_group]["Home"].dropna().unique())
+                # selected_player = st.selectbox(
+                #     "Player",
+                #     options=["All"] + players,
+                #     index=0,
+                # )
 
                 display_fixtures = (
                     fixtures if selected_group == "All"
                     else fixtures[fixtures["Group"] == selected_group].reset_index(drop=True)
                 )
+
+                # dropdown filter for players
+                # players = sorted(fixtures["Home"].dropna().unique()) if selected_group == "All" else sorted(fixtures[fixtures["Group"] == selected_group]["Home"].dropna().unique())
+                players = sorted(display_fixtures["Home"].dropna().unique()) + sorted(display_fixtures["Away"].dropna().unique())
+                selected_player = st.selectbox(
+                                    "Player",
+                                    options=["All"] + list(dict.fromkeys(players)),
+                                    index=0,
+                                )
 
                 final_fixtures = (display_fixtures if selected_player == "All" 
                                   else display_fixtures[(display_fixtures["Home"] == selected_player) 
