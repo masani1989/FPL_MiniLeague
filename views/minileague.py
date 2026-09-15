@@ -356,21 +356,25 @@ def render_grid(df: pd.DataFrame, column_order: list | None = None, height: int 
     """
     return html
 
-def render_overall_grid(df: pd.DataFrame, column_order: list | None = None, height: int = 780, selectable: bool = False) -> str:
+def render_overall_grid(df: pd.DataFrame, column_order: list | None = None, height: int = 780) -> str:
     """
     Render a clean 3-column HTML grid for Overall standings: Rank | Player | Points.
-    - No special highlighting.
+    - Top-4 rows are highlighted with a teal background and white text.
     - Player column is the largest so names don't wrap.
-    - Rows can be made selectable to set URL query params.
+    - This is a display-only grid; use the selectbox below it for player selection.
     """
     cols = column_order if column_order is not None else list(df.columns)[:3]
     # enforce exactly three columns (Rank, Player, Points)
     if len(cols) != 3:
         cols = ['Rank', 'Player', 'Points']
 
+    # Ensure consistent ordering by Rank so the grid is always top-down.
+    if 'Rank' in df.columns:
+        df = df.sort_values(by=['Rank']).reset_index(drop=True)
+
     grid_css = f'''
     <style>
-    .overall-grid {{ display:block; width:100%; max-height: 400px; overflow:auto; padding:10px; box-sizing:border-box; }}
+    .overall-grid {{ display:block; width:100%; max-height: {height}px; overflow:auto; padding:10px; box-sizing:border-box; }}
     .overall-grid .header, .overall-grid .row {{
         display:grid;
         /* make Player the dominant column so long names fit:
@@ -433,8 +437,6 @@ def render_overall_grid(df: pd.DataFrame, column_order: list | None = None, heig
         box-shadow: 0 12px 30px rgba(0,105,92,0.18);
     }}
 
-    .overall-grid .row a {{ display:grid; grid-template-columns: inherit; gap:inherit; text-decoration:none; color:inherit; }}
-
     @media (max-width:450px) {{
         .overall-grid .header, .overall-grid .row {{ grid-template-columns: 60px 190px 24px; padding:2px; gap:4px; align-items:center;}}
         .overall-grid .cell, .overall-grid .player, .overall-grid .points, .overall-grid .rank {{
@@ -450,14 +452,11 @@ def render_overall_grid(df: pd.DataFrame, column_order: list | None = None, heig
 
     header_cells = ''.join([f"<div class='cell'>{c}</div>" for c in cols])
     rows_html = ''
-    for idx, row in enumerate(df.itertuples(index=False, name=None)):
-        # map tuple to column names
-        row_dict = {cols[i]: row[i] if i < len(row) else '' for i in range(3)}
-
+    for _, row in df.iterrows():
         # determine if this should be highlighted (rank <= 4)
         cls = 'row'
         try:
-            rank_val = int(row_dict.get('Rank', 0))
+            rank_val = int(row.get('Rank', 0))
             if rank_val <= 4 and rank_val > 0:
                 cls = 'row top'
         except Exception:
@@ -465,7 +464,7 @@ def render_overall_grid(df: pd.DataFrame, column_order: list | None = None, heig
 
         cell_html = ''
         for c in cols:
-            val = row_dict.get(c, '')
+            val = row.get(c, '')
             cell_class = 'cell'
             if str(c).lower() == 'player':
                 cell_class += ' player'
@@ -478,13 +477,7 @@ def render_overall_grid(df: pd.DataFrame, column_order: list | None = None, heig
             # ensure that cell content inherits color from row.top when highlighted
             cell_html += f"<div class='{cell_class}' title='{display_val}'>{display_val}</div>"
 
-        if selectable:
-            player_name = urllib.parse.quote_plus(str(row_dict.get('Player', '')).strip())
-            href = f"?selected_idx={idx}&selected={player_name}"
-            rows_html += f"<div class='{cls}'><a href='{href}' target='_self'>{cell_html}</a></div>"
-            
-        else:
-            rows_html += f"<div class='{cls}'>{cell_html}</div>"
+        rows_html += f"<div class='{cls}'>{cell_html}</div>"
 
     html = f"""
     {grid_css}
@@ -514,36 +507,35 @@ with tab_ovr:
     # Overall Standings section
     with oc:
         st.subheader('Overall Ranking', anchor=False)
-        st.caption('Click any row to select the respective player')
+        st.caption('Select a player from the dropdown to view their metrics\n')
 
-        # Render the visual HTML grid but make rows selectable so selection is persisted via query params
-        html = render_overall_grid(ovr_data[['Rank', 'Player', 'Points']],
+        ovr_sorted = ovr_data.sort_values(by=['Rank']).reset_index(drop=True)
+
+        # No-page-refresh player selector. Updating this reruns the script only,
+        # so metrics update instantly without a full browser reload.
+        selected_raw = st.selectbox(
+            'Select player',
+            options=['***Select a manager***'] + ovr_sorted['Player'].tolist(),
+            key='selected_player',
+            label_visibility='collapsed',
+        )
+
+        # Render the visual HTML grid as a read-only display
+        html = render_overall_grid(ovr_sorted[['Rank', 'Player', 'Points']],
                            column_order=['Rank', 'Player', 'Points'],
-                           height=780,
-                           selectable=True)
+                           height=780)
         st.markdown(html, unsafe_allow_html=True)
 
-        # Read selection from query params (set when a row is clicked)
-        qp = st.query_params
-        print('query params:', qp)
-        sel = qp.get('selected', None)
-        sel_idx = qp.get('selected_idx', None)
-
-        playerSelected = '***Select a player***'
+        playerSelected = ''
         gw_winnings = 0.0
         mn_winnings = 0.0
         rank_val = None
         delta_val = None
 
-        if sel is not None:
-            # decode and normalize
-            sel_name = urllib.parse.unquote_plus(sel).strip()
-            # try to locate by exact match first, else try case-insensitive contains
-            mask = ovr_data['Player'].astype(str).str.strip() == sel_name
-            if not mask.any():
-                mask = ovr_data['Player'].astype(str).str.strip().str.lower() == sel_name.lower()
+        if selected_raw and selected_raw != '':
+            mask = ovr_sorted['Player'].astype(str).str.strip() == selected_raw.strip()
             if mask.any():
-                person_row = ovr_data.loc[mask].iloc[0]
+                person_row = ovr_sorted.loc[mask].iloc[0]
                 # normalized capitalization
                 parts = str(person_row['Player']).strip().split()
                 if len(parts) >= 2:

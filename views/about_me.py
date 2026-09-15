@@ -6,7 +6,7 @@ import Utils.supabase_conn as db
 # from fpl_streamlit_app import deadline, latest_gw
 
 st.markdown(f'<h1 style="color:#33ff33;font-size:60px;background-image:linear-gradient(45deg, #1A512E, #63A91F);font-family:Montserrat;text-align:left;padding:20px;border-radius:10px;"'
-            f'>Fantasy Kings 2025-26</h1>', unsafe_allow_html=True)
+            f'>{st.secrets["app"]["league_name"]}</h1>', unsafe_allow_html=True)
 
 # CSS styles for various elements on the screen
 st.html(
@@ -116,7 +116,7 @@ with col1:
 
 with col2:
     st.caption("Himanshu Masani")
-    st.caption('FPL Admin for Fantasy Kings 2024-25')
+    st.caption(f'FPL Admin for {lg_name}')
     if st.button("✉️ Contact Me"):
         st.warning('''
                 - Phone : xxxxx
