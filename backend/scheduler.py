@@ -209,6 +209,38 @@ async def announce_lms_elimination(telegram_app) -> None:
     recent_gw, is_finished = await get_recent_completed_gameweek()
     if not is_finished or not recent_gw:
         return
+
+    # if gameweek is already processed, announce based on data in db lms tables
+    if is_finished and recent_gw:
+        contest = await db.get_lms_contest(config.SEASON_ID, config.FPL_LEAGUE_ID)
+        db_result = await db.get_lms_eliminated_managers(contest["id"], recent_gw) if contest else None
+        if not db_result:
+            return
+        eliminated_player_name = db_result[0]["player_name"]
+        coin_toss_required = db_result[0]["coin_toss_required"]
+        # alive_after = await db.get_lms_standings_rows(contest["id"]) if contest else None
+        # alive_after = len(alive_after[alive_after["is_alive"] == True]) if alive_after else 0
+
+        alive_after = await db.get_lms_standings_rows(contest["id"]) if contest else []
+        alive_after_count = sum(1 for r in alive_after if r.get("is_alive")) if alive_after else 0
+
+        if alive_after_count == 1:
+            completed = True
+        else:
+            completed = False
+
+        text = (
+            f"🛡️ Last Man Standing — Gameweek {recent_gw}:\n"
+            f"❌ {eliminated_player_name} has been eliminated!\n"
+            f"🧍 {alive_after_count} survivors remain."
+        )
+        if coin_toss_required:
+            text += "\n🪙 Tie was decided by a coin toss."
+        if completed:
+            text += "\n🏆 We have a Last Man Standing winner!"
+        await _send_to_active_chats(telegram_app, text, "lms_elimination", f"gw_{recent_gw}")
+        return
+
     summary = await run_lms_for_gw(recent_gw)
     if summary.get("status") != "ok" or not summary.get("eliminated"):
         return
