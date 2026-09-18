@@ -351,6 +351,40 @@ async def mark_lms_eliminated(
         payload["final_rank"] = final_rank
     await client.table("lms_standings").update(payload).eq("contest_id", contest_id).eq("manager_id", manager_id).execute()
 
+async def get_lms_eliminated_managers(contest_id: int, gameweek_id: int = None) -> list[dict]:
+    """Return eliminated managers with their fpl_entry_id joined from the managers table."""
+    client = await get_client()
+    response = (
+        await client.table("lms_eliminations")
+        .select("eliminated_player_name,eliminated_manager_id,gameweek_id,coin_toss_required")
+        .eq("contest_id", contest_id)
+        .execute()
+    )
+    if gameweek_id is not None:
+        rows = [r for r in _to_records(response) if r["gameweek_id"] == gameweek_id]
+    else:
+        rows = _to_records(response)
+
+    if not rows:
+        return []
+    manager_ids = [r["eliminated_manager_id"] for r in rows]
+    managers_resp = (
+        await client.table("managers")
+        .select("id,fpl_entry_id")
+        .in_("id", manager_ids)
+        .execute()
+    )
+    entry_by_id = {m["id"]: m["fpl_entry_id"] for m in _to_records(managers_resp)}
+    return [
+        {
+            "manager_id": r["eliminated_manager_id"],
+            "fpl_entry_id": entry_by_id.get(r["eliminated_manager_id"]),
+            "player_name": r["eliminated_player_name"],
+            "eliminated_gw": r["gameweek_id"],
+            "coin_toss_required": r["coin_toss_required"]
+        }
+        for r in rows if entry_by_id.get(r["eliminated_manager_id"]) != 9896218  # Exclude the test manager with fpl_entry_id "AkS"
+    ]
 
 async def complete_lms_contest(contest_id: int, winner_manager_id: int) -> None:
     """Mark an LMS contest completed with the winning manager."""

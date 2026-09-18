@@ -1,8 +1,10 @@
 import streamlit as st
 from pathlib import Path
 import Utils.gameweek as gwk
+import os
 
 st.set_page_config(layout="wide")
+os.system("playwright install chromium")
 
 global deadline, later_gw, completed_months
 

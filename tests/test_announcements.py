@@ -3,7 +3,7 @@ import os
 
 from backend import db
 from backend.telegram_bot import build_telegram_app
-from backend.scheduler import announce_cc_fixtures, announce_cc_round, announce_gameweek_results, announce_monthly_results, pre_gameweek_suggestions
+from backend.scheduler import announce_lms_elimination, announce_cc_fixtures, announce_cc_round, announce_gameweek_results, announce_monthly_results, pre_gameweek_suggestions
 
 async def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -14,7 +14,7 @@ async def main():
     # await pre_gameweek_suggestions(telegram_app)
     # await announce_gameweek_results(telegram_app)
     # await announce_monthly_results(telegram_app)
-
+    # await announce_lms_elimination(telegram_app)
 
 if __name__ == "__main__":
     asyncio.run(main())

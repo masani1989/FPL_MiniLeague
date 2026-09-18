@@ -145,7 +145,7 @@ with tab_fixtures:
 
         try:
             events = gwk.get_gameweek_data()["events"]
-            finished_gws = sorted([e["id"] for e in events])[:26]# if e.get("finished")])
+            finished_gws = sorted([e["id"] for e in events])[:31]# if e.get("finished")])
         except Exception:
             finished_gws = []
 
@@ -156,7 +156,7 @@ with tab_fixtures:
             if default_gw not in finished_gws:
                 default_gw = finished_gws[-1]
             selected_gw = st.selectbox(
-                "Matchday",
+                "Gameweek",
                 options=["All"] + [str(gw) for gw in finished_gws],
                 index=finished_gws.index(default_gw)
             )
