@@ -67,11 +67,18 @@ def compute_manager_score(
 
         if pick.get("is_captain"):
             mult = min(pick.get("multiplier", 1), CAPTAIN_MULTIPLIER_CAP)
-            captain_element = element
-            captain_multiplier = mult
+            if mult > 1:
+                captain_element = element
+                captain_multiplier = mult
+            else:
+                vice_captain_element = element
         elif pick.get("is_vice_captain"):
-            mult = 1
-            vice_captain_element = element
+            mult = max(pick.get("multiplier", 1), 1)
+            if mult > 1:
+                captain_element = element
+                captain_multiplier = mult
+            else:
+                vice_captain_element = element
         else:
             mult = 1
 
