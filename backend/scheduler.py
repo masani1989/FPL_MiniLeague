@@ -54,22 +54,22 @@ def start_scheduler(telegram_app) -> None:
         id="pre_gw_suggestions",
         replace_existing=True,
     )
-    scheduler.add_job(
-        announce_lms_elimination,
-        "cron",
-        minute="47",
-        args=(telegram_app,),
-        id="announce_lms_elimination",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        announce_cc_round,
-        "cron",
-        minute="7",
-        args=(telegram_app,),
-        id="announce_cc_round",
-        replace_existing=True,
-    )
+    # scheduler.add_job(
+    #     announce_lms_elimination,
+    #     "cron",
+    #     minute="47",
+    #     args=(telegram_app,),
+    #     id="announce_lms_elimination",
+    #     replace_existing=True,
+    # )
+    # scheduler.add_job(
+    #     announce_cc_round,
+    #     "cron",
+    #     minute="7",
+    #     args=(telegram_app,),
+    #     id="announce_cc_round",
+    #     replace_existing=True,
+    # )
     scheduler.add_job(
         announce_cc_fixtures,
         "cron",
@@ -151,6 +151,8 @@ async def announce_gameweek_results(telegram_app) -> None:
             continue
         deadline_dt = _parse_deadline(deadline)
         if gw.get("finished") and deadline_dt < now_utc:
+            await announce_lms_elimination(telegram_app)
+            await announce_cc_round(telegram_app)
             agent = OllamaAgent()
             gw_res_prompt = f"Summarise gameweek {gw['id']} results. Announce winner(s) and top performers across each competition. " \
                             f"For continental conquest, mention the key results which were either very close, a complete dominance or a nailbiting draw (it needs to hold significance and not necessary to give results under each category). Do not provide standings and all the results from the gameweek. " \
